@@ -599,6 +599,7 @@
         const desiredHeight = Math.max(window.innerHeight || 0, 100);
         const scale = desiredHeight / (baseViewport.height || 1);
         const viewport = page.getViewport({ scale });
+        const outputScale = window.devicePixelRatio || 1;
 
         if (currentRenderTask) {
           try {
@@ -609,14 +610,19 @@
           currentRenderTask = null;
         }
 
-        canvas.style.height = `${viewport.height}px`;
-        canvas.style.width = `${viewport.width}px`;
-        canvas.height = viewport.height;
-        canvas.width = viewport.width;
+        const displayWidth = Math.floor(viewport.width);
+        const displayHeight = Math.floor(viewport.height);
+        canvas.style.height = `${displayHeight}px`;
+        canvas.style.width = `${displayWidth}px`;
+        canvas.height = Math.floor(viewport.height * outputScale);
+        canvas.width = Math.floor(viewport.width * outputScale);
+
+        const transform = outputScale !== 1 ? [outputScale, 0, 0, outputScale, 0, 0] : null;
 
         const renderContext = {
           canvasContext: ctx,
           viewport,
+          transform,
         };
 
         currentRenderTask = page.render(renderContext);
