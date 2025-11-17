@@ -114,9 +114,25 @@
         border-bottom: none;
       }
 
-      .page-groups li.highlight {
-        background: darkorange;
-        color: white;
+      .modified-panel {
+        margin-top: 1rem;
+        border: 1px solid var(--border-color);
+        border-radius: 10px;
+        padding: 0.75rem;
+        background: color-mix(in srgb, var(--panel-bg), white 10%);
+      }
+
+      .modified-panel h3 {
+        margin: 0 0 0.5rem;
+      }
+
+      .modified-list p {
+        margin: 0;
+      }
+
+      .modified-list ul {
+        margin: 0.35rem 0 0.2rem 1.1rem;
+        padding: 0;
       }
 
       .page-controls {
@@ -278,6 +294,12 @@
           <h3>Page groups</h3>
           <ul id="pageGroups" class="page-groups"></ul>
         </div>
+        <div class="modified-panel">
+          <h3>Modified pages</h3>
+          <div id="overrideSummary" class="modified-list">
+            <p>No header/footer overrides applied yet.</p>
+          </div>
+        </div>
       </section>
 
       <section class="panel" id="previewPanel">
@@ -322,6 +344,7 @@
       const previewButton = document.getElementById('previewBtn');
       const extractButton = document.getElementById('extractBtn');
       const previewPanel = document.getElementById('previewPanel');
+      const overrideSummaryEl = document.getElementById('overrideSummary');
 
       let pdfDoc = null;
       let analysis = null;
@@ -331,7 +354,6 @@
       const headerOverridePages = new Set();
       const footerOverridePages = new Set();
       const columnPreviewSelections = new Map();
-      let pageGroupRanges = [];
       let headerRememberScope = 'page';
       let footerRememberScope = 'page';
       let headerRememberEnabled = false;
@@ -374,7 +396,6 @@
         headerOverridePages.clear();
         footerOverridePages.clear();
         columnPreviewSelections.clear();
-        pageGroupRanges = [];
         headerRememberScope = 'page';
         footerRememberScope = 'page';
         headerRememberEnabled = false;
@@ -394,6 +415,9 @@
         analyzeButton.disabled = true;
         previewButton.disabled = true;
         extractButton.disabled = true;
+        if (overrideSummaryEl) {
+          overrideSummaryEl.innerHTML = '<p>No header/footer overrides applied yet.</p>';
+        }
         setLoading('');
       }
 
@@ -418,6 +442,7 @@
 
         renderSummary(analysis);
         renderPageGroups(analysis.groups);
+        renderOverrideSummary();
         populatePageSelect(pdfDoc.numPages);
         await renderPage(1);
         renderPageDetails(1);
@@ -456,7 +481,6 @@
       function renderPageGroups(groups) {
         if (!groups?.length) {
           pageGroupsEl.innerHTML = '<li>No pages analyzed</li>';
-          pageGroupRanges = [];
           return;
         }
 
@@ -469,8 +493,6 @@
             ranges.push({ start: entry.page, end: entry.page, label: entry.label });
           }
         });
-
-        pageGroupRanges = ranges;
 
         pageGroupsEl.innerHTML = ranges
           .map((range) => {
@@ -713,11 +735,8 @@
           }
         });
 
-        if (targetPages.length) {
-          highlightPageGroups(scope, targetPages);
-        }
-
         renderPageDetails(pageNumber);
+        renderOverrideSummary();
       }
 
       function getPagesForScope(scope, pageNumber, groupLabel) {
@@ -733,35 +752,57 @@
         return [pageNumber];
       }
 
-      function highlightPageGroups(scope, pages = []) {
-        if (!pageGroupRanges.length) return;
-        const items = pageGroupsEl.querySelectorAll('li');
-        if (!items.length) return;
-        const duration = 2000;
-
-        if (scope === 'document') {
-          items.forEach((item) => {
-            item.classList.add('highlight');
-            setTimeout(() => item.classList.remove('highlight'), duration);
-          });
+      function renderOverrideSummary() {
+        if (!overrideSummaryEl) return;
+        if (!analysis) {
+          overrideSummaryEl.innerHTML = '<p>No header/footer overrides applied yet.</p>';
           return;
         }
 
-        if (!pages.length) return;
-        const indices = new Set();
-        pageGroupRanges.forEach((range, index) => {
-          const matches = pages.some((page) => page >= range.start && page <= range.end);
-          if (matches) {
-            indices.add(index);
-          }
-        });
+        const headerRanges = buildOverrideRanges([...headerOverridePages]);
+        const footerRanges = buildOverrideRanges([...footerOverridePages]);
 
-        items.forEach((item, index) => {
-          if (indices.has(index)) {
-            item.classList.add('highlight');
-            setTimeout(() => item.classList.remove('highlight'), duration);
+        if (!headerRanges.length && !footerRanges.length) {
+          overrideSummaryEl.innerHTML = '<p>No header/footer overrides applied yet.</p>';
+          return;
+        }
+
+        const headerMarkup = headerRanges.length
+          ? `<div><strong>Header overrides</strong>${buildRangeList(headerRanges)}</div>`
+          : '';
+        const footerMarkup = footerRanges.length
+          ? `<div><strong>Footer overrides</strong>${buildRangeList(footerRanges)}</div>`
+          : '';
+
+        overrideSummaryEl.innerHTML = `${headerMarkup}${footerMarkup}` || '<p>No header/footer overrides applied yet.</p>';
+      }
+
+      function buildOverrideRanges(pages = []) {
+        if (!analysis || !pages.length) return [];
+        const sorted = [...pages].sort((a, b) => a - b);
+        const ranges = [];
+        sorted.forEach((page) => {
+          const detail = analysis.pageDetails[page - 1];
+          const label = formatGroupLabel(detail?.groupLabel || '');
+          const last = ranges[ranges.length - 1];
+          if (last && last.end === page - 1 && last.label === label) {
+            last.end = page;
+          } else {
+            ranges.push({ start: page, end: page, label });
           }
         });
+        return ranges;
+      }
+
+      function buildRangeList(ranges = []) {
+        if (!ranges.length) return '';
+        const items = ranges
+          .map((range) => {
+            const pageLabel = range.start === range.end ? `Page ${range.start}` : `Pages ${range.start}-${range.end}`;
+            return `<li>${pageLabel}: ${range.label}</li>`;
+          })
+          .join('');
+        return `<ul>${items}</ul>`;
       }
 
       function buildScopeOptions(selectedValue = 'page') {
