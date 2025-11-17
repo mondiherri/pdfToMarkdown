@@ -11,7 +11,7 @@ all parsing, heuristics, and rendering run on the client.
 - **Structural cues** – for text-heavy pages the tool estimates repeating headers, footers, column counts, and invisible text items.
 - **Scoped overrides** – mark detected headers or footers as normal text and remember the choice for a single page, its group, or the entire document; a dedicated "Modified pages" panel summarizes every affected range.
 - **Column raster preview** – enter a column number to overlay a translucent highlight on that section of the page canvas.
-- **Live preview** – render any page with previous/next navigation so you can visually verify the heuristics.
+- **Live preview** – render any page inside a dedicated right-hand panel whose canvas stretches to the full browser height, plus previous/next navigation so you can visually verify the heuristics.
 - **Action shortcuts** – Analyze, Preview, and Extract buttons keep the workflow focused and export a Markdown snapshot of the findings.
 
 ## Usage
@@ -19,7 +19,7 @@ all parsing, heuristics, and rendering run on the client.
 1. Clone or download this repository.
 2. Open `index.html` in any modern browser (Chrome, Edge, Firefox, or Safari).
 3. Upload a PDF using the file picker, then click **Analyze** to process it.
-4. Use **Preview** to jump to the canvas viewer and page details, or **Extract** to download a Markdown summary of the analysis.
+4. Use **Preview** to jump to the full-height canvas viewer on the right or **Extract** to download a Markdown summary of the analysis.
 5. Browse the detected page groups, type a page number into the textbox selector, and inspect its metadata alongside the preview. Use the header/footer overrides plus the "Remember for" scope controls to apply changes to the current page, its group, or all pages—the "Modified pages" panel in the Overview section lists every page range that has been flagged. The column raster overlay continues to help isolate multi-column layouts.
 
 Because the project is fully static there is no build step and `npm install` is not required. Everything—markup, styling,
