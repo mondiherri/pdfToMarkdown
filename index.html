@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>PDF Structure Analyzer</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <header>
+      <h1>PDF Structure Analyzer</h1>
+      <p>
+        Upload a legal PDF to inspect its pagination, detect table of contents or index pages,
+        and examine headers, footers, column counts, and invisible text on any page.
+      </p>
+    </header>
+
+    <main>
+      <section class="panel">
+        <h2>1. Upload PDF</h2>
+        <input type="file" id="pdfInput" accept="application/pdf" />
+        <p class="hint">
+          All analysis runs locally in your browser using Mozilla's pdf.js library; the document never leaves your device.
+        </p>
+        <div id="loading" aria-live="polite"></div>
+      </section>
+
+      <section class="panel">
+        <h2>2. Document Overview</h2>
+        <div id="summary" class="summary">Load a document to view its metadata.</div>
+        <div>
+          <h3>Page groups</h3>
+          <ul id="pageGroups" class="page-groups"></ul>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>3. Page Details & Preview</h2>
+        <div class="page-controls">
+          <label for="pageSelect">Jump to page:</label>
+          <select id="pageSelect" disabled></select>
+          <button id="prevPage" disabled>Previous page</button>
+          <button id="nextPage" disabled>Next page</button>
+          <span id="pageIndicator"></span>
+        </div>
+        <div id="pageDetails" class="details">Select a page to inspect its structure.</div>
+        <canvas id="pageCanvas" class="preview" aria-label="PDF page preview"></canvas>
+      </section>
+    </main>
+
+    <footer>
+      <p>
+        Built with <a href="https://mozilla.github.io/pdf.js/" target="_blank" rel="noreferrer">pdf.js</a> to
+        accelerate legal-document ingestion for knowledge bases.
+      </p>
+    </footer>
+
+    <script type="module" src="./src/app.js"></script>
+  </body>
+</html>
