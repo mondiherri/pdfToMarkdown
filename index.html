@@ -323,6 +323,7 @@
             <button id="analyzeBtn" disabled>Analyze</button>
             <button id="previewBtn" disabled>Preview</button>
             <button id="extractBtn" disabled>Extract</button>
+            <button id="markdownBtn" disabled>Download Markdown</button>
           </div>
           <div id="loading" aria-live="polite"></div>
         </section>
@@ -386,6 +387,7 @@
       const analyzeButton = document.getElementById('analyzeBtn');
       const previewButton = document.getElementById('previewBtn');
       const extractButton = document.getElementById('extractBtn');
+      const markdownButton = document.getElementById('markdownBtn');
       const previewPanel = document.getElementById('previewPanel');
       const overrideSummaryEl = document.getElementById('overrideSummary');
       let currentRenderTask = null;
@@ -411,6 +413,7 @@
       analyzeButton.addEventListener('click', () => runAnalysis());
       previewButton.addEventListener('click', focusPreviewPanel);
       extractButton.addEventListener('click', exportAnalysisReport);
+      markdownButton.addEventListener('click', exportMarkdownDocument);
       window.addEventListener('resize', handleResize);
 
       function setLoading(message = '') {
@@ -462,6 +465,7 @@
         analyzeButton.disabled = true;
         previewButton.disabled = true;
         extractButton.disabled = true;
+        markdownButton.disabled = true;
         if (overrideSummaryEl) {
           overrideSummaryEl.innerHTML = '<p>No header/footer overrides applied yet.</p>';
         }
@@ -477,6 +481,7 @@
         analyzeButton.disabled = true;
         previewButton.disabled = true;
         extractButton.disabled = true;
+        markdownButton.disabled = true;
         headerOverridePages.clear();
         footerOverridePages.clear();
         columnPreviewSelections.clear();
@@ -495,6 +500,7 @@
         renderPageDetails(1);
         previewButton.disabled = false;
         extractButton.disabled = false;
+        markdownButton.disabled = false;
         analyzeButton.disabled = false;
       }
 
@@ -981,6 +987,7 @@
           indexPages: [],
           groups: [],
           pageDetails: [],
+          textContent: [],
         };
 
         for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
@@ -993,6 +1000,7 @@
             .map((item) => {
               const width = item.width ?? Math.abs(item.transform[0]) ?? 0;
               const height = Math.abs(item.transform[3]) || Math.abs(item.transform[1]) || item.height || 0;
+              const fontSize = height;
               const rect = viewport.convertToViewportRectangle([
                 item.transform[4],
                 item.transform[5],
@@ -1010,6 +1018,7 @@
                 y: item.transform[5],
                 width,
                 height,
+                fontSize,
                 normalizedX: viewport.width ? rectX / viewport.width : 0,
                 normalizedY: viewport.height ? rectY / viewport.height : 0,
                 normalizedWidth: viewport.width ? rectWidth / viewport.width : 0,
@@ -1018,8 +1027,10 @@
             });
 
           const details = evaluatePage(items, viewport, pageNumber);
+          const { readingOrder, ...pageMetrics } = details;
           summary.groups.push({ page: pageNumber, label: details.groupLabel });
-          summary.pageDetails.push(details);
+          summary.pageDetails.push(pageMetrics);
+          summary.textContent.push({ pageNumber, lines: readingOrder });
 
           if (details.hasTableOfContentsHeading || details.tocEntryRatio > 0.3) {
             summary.tableOfContentsPages.push(pageNumber);
@@ -1035,8 +1046,22 @@
       function evaluatePage(items, viewport, pageNumber) {
         const lines = buildLines(items);
         const pageWidth = viewport.width || 1;
-        const headerLine = lines.find((line) => line.relativeY > 0.85)?.text ?? '';
-        const footerLine = [...lines].reverse().find((line) => line.relativeY < 0.15)?.text ?? '';
+        const columnCount = annotateColumnAssignments(lines, pageWidth);
+        const averageFontSize = lines.length
+          ? lines.reduce((sum, line) => sum + (line.fontSize || 0), 0) / lines.length
+          : 0;
+
+        annotateHeadingLevels(lines, averageFontSize);
+
+        const headerCandidate = lines.find((line) => line.relativeY > 0.85);
+        if (headerCandidate) headerCandidate.blockType = 'header';
+        const footerCandidate = [...lines].reverse().find((line) => line.relativeY < 0.15);
+        if (footerCandidate && footerCandidate !== headerCandidate) {
+          footerCandidate.blockType = 'footer';
+        }
+
+        const headerLine = headerCandidate?.text ?? '';
+        const footerLine = footerCandidate?.text ?? '';
 
         let tocEntryCount = 0;
         let indexEntryCount = 0;
@@ -1058,7 +1083,6 @@
 
         const tocEntryRatio = lines.length ? tocEntryCount / lines.length : 0;
         const groupLabel = classifyPage({ tocEntryRatio, indexEntryCount, hasTocHeading, hasIndexHeading });
-        const columnCount = estimateColumnCount(lines, pageWidth);
         const invisibleItems = items.filter((item) => item.width < 0.1).length;
         const textAreas = items
           .map((item) => ({
@@ -1068,6 +1092,7 @@
             height: item.normalizedHeight || 0,
           }))
           .filter((area) => area.width > 0 && area.height > 0);
+        const readingOrder = buildReadingOrder(lines, pageNumber);
 
         return {
           pageNumber,
@@ -1081,6 +1106,7 @@
           hasIndexHeading,
           groupLabel,
           textAreas,
+          readingOrder,
         };
       }
 
@@ -1099,7 +1125,18 @@
             const text = sorted.map((item) => item.text).join(' ').replace(/\s{2,}/g, ' ').trim();
             const y = key * 2;
             const minX = sorted.length ? sorted[0].x : 0;
-            return { text, y, minX };
+            const averageFontSize = sorted.length
+              ? sorted.reduce((sum, item) => sum + (item.fontSize || item.height || 0), 0) / sorted.length
+              : 0;
+            return {
+              text,
+              y,
+              minX,
+              fontSize: averageFontSize,
+              columnIndex: 0,
+              headingLevel: 0,
+              blockType: 'body',
+            };
           })
           .filter((line) => line.text)
           .sort((a, b) => b.y - a.y);
@@ -1136,18 +1173,94 @@
         return 'mainly text';
       }
 
-      function estimateColumnCount(lines, pageWidth) {
-        const xPositions = lines.map((line) => line.minX).filter((x) => Number.isFinite(x));
-        if (!xPositions.length || !pageWidth) return 0;
-        xPositions.sort((a, b) => a - b);
-        let clusters = 1;
+      function annotateColumnAssignments(lines, pageWidth) {
+        if (!lines.length || !pageWidth) return 0;
         const threshold = pageWidth * 0.15;
-        for (let i = 1; i < xPositions.length; i += 1) {
-          if (Math.abs(xPositions[i] - xPositions[i - 1]) > threshold) {
-            clusters += 1;
+        const centers = [];
+
+        lines.forEach((line) => {
+          const existing = centers.find((center) => Math.abs(center.x - line.minX) <= threshold);
+          if (existing) {
+            existing.lines.push(line);
+            const total = existing.lines.length;
+            existing.x = ((existing.x * (total - 1)) + line.minX) / total;
+          } else {
+            centers.push({ x: line.minX, lines: [line] });
           }
+        });
+
+        centers.sort((a, b) => a.x - b.x);
+        centers.forEach((center, index) => {
+          center.lines.forEach((line) => {
+            line.columnIndex = index;
+          });
+        });
+
+        return centers.length || 0;
+      }
+
+      function buildReadingOrder(lines, pageNumber) {
+        if (!lines.length) return [];
+        const columnGroups = new Map();
+        lines.forEach((line) => {
+          const columnIndex = Number.isFinite(line.columnIndex) ? line.columnIndex : 0;
+          const group = columnGroups.get(columnIndex) || [];
+          group.push(line);
+          columnGroups.set(columnIndex, group);
+        });
+
+        const orderedLines = [];
+        [...columnGroups.keys()]
+          .sort((a, b) => a - b)
+          .forEach((columnIndex) => {
+            const group = columnGroups.get(columnIndex) || [];
+            group
+              .slice()
+              .sort((a, b) => b.y - a.y)
+              .forEach((line) => {
+                orderedLines.push({ ...line, pageNumber });
+              });
+          });
+
+        return orderedLines;
+      }
+
+      function annotateHeadingLevels(lines, averageFontSize) {
+        lines.forEach((line) => {
+          line.headingLevel = detectHeadingLevel(line, averageFontSize);
+        });
+      }
+
+      function detectHeadingLevel(line, averageFontSize) {
+        const text = line.text?.trim() || '';
+        if (!text) return 0;
+
+        const numberedMatch = text.match(/^(\d+(?:\.\d+){0,5})[\s\-\)]/);
+        if (numberedMatch) {
+          const depth = numberedMatch[1].split('.').length;
+          return Math.min(Math.max(depth, 1), 6);
         }
-        return Math.min(clusters, 4);
+
+        const romanMatch = text.match(/^(?:[IVXLCDM]+\.|[A-Z]\))\s+/);
+        if (romanMatch) {
+          return 2;
+        }
+
+        const relativeFont = averageFontSize ? (line.fontSize || averageFontSize) / averageFontSize : 1;
+        const letterMatches = text.match(/[A-Za-z]/g) || [];
+        const uppercaseMatches = text.match(/[A-Z]/g) || [];
+        const uppercaseRatio = letterMatches.length ? uppercaseMatches.length / letterMatches.length : 0;
+        const isShort = text.length <= 80;
+
+        if ((relativeFont > 1.25 && isShort) || (uppercaseRatio > 0.6 && isShort)) {
+          return 2;
+        }
+
+        if (text.endsWith(':') && isShort) {
+          return 3;
+        }
+
+        return 0;
       }
 
       function exportAnalysisReport() {
@@ -1158,6 +1271,25 @@
         const link = document.createElement('a');
         link.href = url;
         link.download = `${pdfFileName || 'pdf-analysis'}-structure.md`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+      }
+
+      function exportMarkdownDocument() {
+        if (!analysis?.textContent?.length) return;
+        const markdown = buildReadingOrderMarkdown({
+          pages: analysis.textContent,
+          title: pdfFileName || 'PDF Markdown Export',
+          headerOverrides: headerOverridePages,
+          footerOverrides: footerOverridePages,
+        });
+        const blob = new Blob([markdown], { type: 'text/markdown' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `${pdfFileName || 'pdf-analysis'}-text.md`;
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
@@ -1203,6 +1335,106 @@
         });
 
         return markdown;
+      }
+
+      function buildReadingOrderMarkdown({ pages = [], title = 'PDF Markdown Export', headerOverrides, footerOverrides } = {}) {
+        const sections = [];
+        const contentBlocks = [];
+        const anchorCounts = new Map();
+        let paragraphBuffer = '';
+
+        const headerSet = headerOverrides instanceof Set ? headerOverrides : new Set(headerOverrides);
+        const footerSet = footerOverrides instanceof Set ? footerOverrides : new Set(footerOverrides);
+
+        function flushParagraph() {
+          const cleaned = paragraphBuffer.trim();
+          if (cleaned) {
+            contentBlocks.push(cleaned);
+          }
+          paragraphBuffer = '';
+        }
+
+        function registerAnchor(text) {
+          const base = slugifyHeading(text) || `section-${sections.length + 1}`;
+          const count = anchorCounts.get(base) || 0;
+          anchorCounts.set(base, count + 1);
+          return count ? `${base}-${count}` : base;
+        }
+
+        pages.forEach((page) => {
+          const allowHeader = headerSet.has(page.pageNumber);
+          const allowFooter = footerSet.has(page.pageNumber);
+          (page.lines || []).forEach((line) => {
+            const blockType = line.blockType || 'body';
+            if (!allowHeader && blockType === 'header') return;
+            if (!allowFooter && blockType === 'footer') return;
+
+            const text = cleanMarkdownText(line.text);
+            if (!text) return;
+
+            if (line.headingLevel > 0) {
+              flushParagraph();
+              const level = Math.min(line.headingLevel, 6);
+              const anchor = registerAnchor(text);
+              sections.push({ title: text, level, anchor });
+              contentBlocks.push(`<a id="${anchor}"></a>\n${'#'.repeat(level)} ${text}`);
+            } else {
+              paragraphBuffer = appendParagraphLine(paragraphBuffer, text);
+            }
+          });
+          flushParagraph();
+        });
+
+        const headingTitle = `# ${title || 'PDF Markdown Export'}`;
+        const toc = buildTableOfContents(sections);
+        const body = contentBlocks.join('\n\n');
+        return `${headingTitle}\n\n${toc}${body}\n`;
+      }
+
+      function appendParagraphLine(buffer, text) {
+        const cleaned = text.trim();
+        if (!buffer) {
+          return cleaned;
+        }
+        const trimmedBuffer = buffer.trim();
+        if (!trimmedBuffer) {
+          return cleaned;
+        }
+        if (trimmedBuffer.endsWith('-') && !trimmedBuffer.endsWith('--')) {
+          return `${trimmedBuffer.slice(0, -1)}${cleaned}`;
+        }
+        return `${trimmedBuffer} ${cleaned}`.replace(/\s+/g, ' ').trim();
+      }
+
+      function cleanMarkdownText(text = '') {
+        return text
+          .replace(/[\u2022\u2023\u25E6\u2043]/g, '- ')
+          .replace(/\s+/g, ' ')
+          .replace(/\s+([,.;:])/g, '$1')
+          .trim();
+      }
+
+      function buildTableOfContents(sections = []) {
+        const heading = '## Table of Contents\n';
+        if (!sections.length) {
+          return `${heading}- _No headings detected_\n\n`;
+        }
+        const lines = sections
+          .map((section) => {
+            const indent = '  '.repeat(Math.max(section.level - 1, 0));
+            return `${indent}- [${section.title}](#${section.anchor})`;
+          })
+          .join('\n');
+        return `${heading}${lines}\n\n`;
+      }
+
+      function slugifyHeading(text = '') {
+        return text
+          .toLowerCase()
+          .replace(/[^a-z0-9\s-]/g, '')
+          .trim()
+          .replace(/\s+/g, '-')
+          .replace(/-+/g, '-');
       }
     </script>
   </body>
