@@ -7,8 +7,10 @@ all parsing, heuristics, and rendering run on the client.
 ## Features
 
 - **Document overview** – show the number of pages and highlight whether a table of contents or index section is detected.
-- **Page grouping** – classify every page as mainly text, mainly table of contents, or mainly index based on the text layout.
+- **Page grouping** – classify every page as mainly text, mainly table of contents, or mainly index based on the text layout, then summarize contiguous ranges ("Pages 4-8: Mainly TOC").
 - **Structural cues** – for text-heavy pages the tool estimates repeating headers, footers, column counts, and invisible text items.
+- **Manual overrides** – mark detected headers or footers as normal text when the heuristics latch on to body content instead.
+- **Column raster preview** – enter a column number to overlay a translucent highlight on that section of the page canvas.
 - **Live preview** – render any page with previous/next navigation so you can visually verify the heuristics.
 - **Action shortcuts** – Analyze, Preview, and Extract buttons keep the workflow focused and export a Markdown snapshot of the findings.
 
@@ -18,7 +20,7 @@ all parsing, heuristics, and rendering run on the client.
 2. Open `index.html` in any modern browser (Chrome, Edge, Firefox, or Safari).
 3. Upload a PDF using the file picker, then click **Analyze** to process it.
 4. Use **Preview** to jump to the canvas viewer and page details, or **Extract** to download a Markdown summary of the analysis.
-5. Browse the detected page groups, select a page from the dropdown, and inspect its metadata alongside the preview.
+5. Browse the detected page groups, type a page number into the textbox selector, and inspect its metadata alongside the preview (including header/footer overrides and the column raster overlay).
 
 Because the project is fully static there is no build step and `npm install` is not required. Everything—markup, styling,
 and JavaScript—lives directly inside `index.html`, so you can email or host a single self-contained file. If you prefer to

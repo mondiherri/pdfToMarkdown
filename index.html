@@ -122,6 +122,14 @@
         margin-bottom: 0.75rem;
       }
 
+      .page-controls input[type='number'] {
+        width: 4.5rem;
+        padding: 0.25rem 0.35rem;
+        border: 1px solid var(--border-color);
+        border-radius: 6px;
+        font: inherit;
+      }
+
       .page-controls button:enabled {
         background: var(--accent);
         color: white;
@@ -142,6 +150,64 @@
         border-radius: 8px;
         background: white;
         display: block;
+      }
+
+      .detail-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+        align-items: center;
+        margin: 0.35rem 0;
+      }
+
+      .override-option {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.3rem;
+        font-size: 0.9rem;
+      }
+
+      .column-line {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+        align-items: center;
+        margin: 0.4rem 0;
+      }
+
+      .column-controls {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.4rem;
+        align-items: center;
+      }
+
+      .column-controls input[type='number'] {
+        width: 4rem;
+        padding: 0.25rem;
+        border: 1px solid var(--border-color);
+        border-radius: 6px;
+        font: inherit;
+      }
+
+      .column-controls button {
+        background: var(--accent);
+        color: white;
+        border: none;
+        padding: 0.25rem 0.65rem;
+        border-radius: 6px;
+        cursor: pointer;
+      }
+
+      .column-controls button:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
+
+      .column-preview-status {
+        font-size: 0.9rem;
+        margin: 0.2rem 0 0.5rem;
+        color: color-mix(in srgb, canvastext, transparent 25%);
       }
 
       #loading {
@@ -197,7 +263,7 @@
         <h2>3. Page Details & Preview</h2>
         <div class="page-controls">
           <label for="pageSelect">Jump to page:</label>
-          <select id="pageSelect" disabled></select>
+          <input id="pageSelect" type="number" min="1" disabled />
           <button id="prevPage" disabled>Previous page</button>
           <button id="nextPage" disabled>Next page</button>
           <span id="pageIndicator"></span>
@@ -241,11 +307,14 @@
       let currentPage = 1;
       let pdfData = null;
       let pdfFileName = 'pdf-analysis';
+      const headerOverridePages = new Set();
+      const footerOverridePages = new Set();
+      const columnPreviewSelections = new Map();
 
       fileInput.addEventListener('change', handleFileSelection);
       prevButton.addEventListener('click', () => goToPage(currentPage - 1));
       nextButton.addEventListener('click', () => goToPage(currentPage + 1));
-      pageSelectEl.addEventListener('change', (event) => goToPage(Number(event.target.value)));
+      pageSelectEl.addEventListener('change', handlePageInput);
       analyzeButton.addEventListener('click', () => runAnalysis());
       previewButton.addEventListener('click', focusPreviewPanel);
       extractButton.addEventListener('click', exportAnalysisReport);
@@ -276,11 +345,17 @@
         currentPage = 1;
         pdfData = null;
         pdfFileName = 'pdf-analysis';
+        headerOverridePages.clear();
+        footerOverridePages.clear();
+        columnPreviewSelections.clear();
         summaryEl.textContent = 'Load a document to view its metadata.';
         pageGroupsEl.innerHTML = '';
         pageDetailsEl.textContent = 'Select a page to inspect its structure.';
-        pageSelectEl.innerHTML = '';
+        pageSelectEl.value = '';
         pageSelectEl.disabled = true;
+        pageSelectEl.removeAttribute('max');
+        pageSelectEl.removeAttribute('min');
+        pageSelectEl.removeAttribute('step');
         prevButton.disabled = true;
         nextButton.disabled = true;
         pageIndicator.textContent = '';
@@ -300,6 +375,9 @@
         analyzeButton.disabled = true;
         previewButton.disabled = true;
         extractButton.disabled = true;
+        headerOverridePages.clear();
+        footerOverridePages.clear();
+        columnPreviewSelections.clear();
 
         setLoading('Loading PDF…');
         pdfDoc = await pdfjsLib.getDocument({ data: pdfData }).promise;
@@ -324,7 +402,8 @@
           : 'Not detected';
 
         const groupCounts = docAnalysis.groups.reduce((acc, group) => {
-          acc[group.label] = (acc[group.label] || 0) + 1;
+          const formatted = formatGroupLabel(group.label);
+          acc[formatted] = (acc[formatted] || 0) + 1;
           return acc;
         }, {});
 
@@ -344,20 +423,54 @@
       }
 
       function renderPageGroups(groups) {
-        pageGroupsEl.innerHTML = groups
-          .map((group) => `<li>Page ${group.page}: ${group.label}</li>`)
+        if (!groups?.length) {
+          pageGroupsEl.innerHTML = '<li>No pages analyzed</li>';
+          return;
+        }
+
+        const ranges = [];
+        groups.forEach((entry) => {
+          const last = ranges[ranges.length - 1];
+          if (last && last.label === entry.label && last.end === entry.page - 1) {
+            last.end = entry.page;
+          } else {
+            ranges.push({ start: entry.page, end: entry.page, label: entry.label });
+          }
+        });
+
+        pageGroupsEl.innerHTML = ranges
+          .map((range) => {
+            const label = formatGroupLabel(range.label);
+            const rangeText = range.start === range.end ? `Page ${range.start}` : `Pages ${range.start}-${range.end}`;
+            return `<li>${rangeText}: ${label}</li>`;
+          })
           .join('');
       }
 
       function populatePageSelect(pageCount) {
-        pageSelectEl.innerHTML = Array.from({ length: pageCount })
-          .map((_, index) => `<option value="${index + 1}">Page ${index + 1}</option>`)
-          .join('');
         pageSelectEl.disabled = false;
+        pageSelectEl.min = '1';
+        pageSelectEl.max = String(pageCount);
+        pageSelectEl.step = '1';
+        pageSelectEl.value = '1';
         prevButton.disabled = false;
         nextButton.disabled = false;
-        pageSelectEl.value = '1';
         pageIndicator.textContent = `Page 1 of ${pageCount}`;
+      }
+
+      function handlePageInput(event) {
+        if (!pdfDoc) {
+          event.target.value = '';
+          return;
+        }
+        const value = Number(event.target.value);
+        if (!Number.isFinite(value)) {
+          event.target.value = String(currentPage);
+          return;
+        }
+        const clamped = Math.min(Math.max(Math.round(value), 1), pdfDoc.numPages);
+        event.target.value = String(clamped);
+        goToPage(clamped);
       }
 
       async function goToPage(pageNumber) {
@@ -388,6 +501,7 @@
         };
 
         await page.render(renderContext).promise;
+        drawColumnOverlay(pageNumber);
       }
 
       function renderPageDetails(pageNumber) {
@@ -395,15 +509,136 @@
         const details = analysis.pageDetails[pageNumber - 1];
         if (!details) return;
 
+        const headerFlagged = headerOverridePages.has(pageNumber);
+        const footerFlagged = footerOverridePages.has(pageNumber);
+        const headerDetected = Boolean(details.headerLine);
+        const footerDetected = Boolean(details.footerLine);
+        const columnCount = details.columnCount || 0;
+        const selectedColumn = columnPreviewSelections.get(pageNumber) || 1;
+        const previewActive = columnPreviewSelections.has(pageNumber);
+
+        const columnControlsMarkup = columnCount
+          ? `
+            <div class="column-line">
+              <p><strong>Estimated columns:</strong> ${columnCount}</p>
+              <div class="column-controls">
+                <label>
+                  Column
+                  <input type="number" min="1" max="${columnCount}" value="${Math.min(selectedColumn, columnCount)}" data-column-input />
+                </label>
+                <button type="button" data-column-preview>Show raster</button>
+                <button type="button" data-column-clear ${previewActive ? '' : 'disabled'}>Clear</button>
+              </div>
+            </div>
+            <p class="column-preview-status">
+              ${
+                previewActive
+                  ? `Previewing column ${Math.min(selectedColumn, columnCount)} of ${columnCount}.`
+                  : 'Enter a column number to overlay its raster on the preview.'
+              }
+            </p>
+          `
+          : `<p><strong>Estimated columns:</strong> ${columnCount}</p>`;
+
         pageDetailsEl.innerHTML = `
-          <p><strong>Classification:</strong> ${details.groupLabel}</p>
-          <p><strong>Detected header:</strong> ${details.headerLine || 'Not detected'}</p>
-          <p><strong>Detected footer:</strong> ${details.footerLine || 'Not detected'}</p>
-          <p><strong>Estimated columns:</strong> ${details.columnCount || 0}</p>
+          <p><strong>Classification:</strong> ${formatGroupLabel(details.groupLabel)}</p>
+          <div class="detail-row">
+            <p><strong>Detected header:</strong> ${details.headerLine || 'Not detected'}${
+              headerFlagged ? ' <em>(flagged as normal text)</em>' : ''
+            }</p>
+            <label class="override-option">
+              <input type="checkbox" data-header-override ${headerDetected ? '' : 'disabled'} ${headerFlagged ? 'checked' : ''} />
+              Treat as normal text
+            </label>
+          </div>
+          <div class="detail-row">
+            <p><strong>Detected footer:</strong> ${details.footerLine || 'Not detected'}${
+              footerFlagged ? ' <em>(flagged as normal text)</em>' : ''
+            }</p>
+            <label class="override-option">
+              <input type="checkbox" data-footer-override ${footerDetected ? '' : 'disabled'} ${footerFlagged ? 'checked' : ''} />
+              Treat as normal text
+            </label>
+          </div>
+          ${columnControlsMarkup}
           <p><strong>Invisible text items:</strong> ${details.invisibleItems}</p>
           <p><strong>Table of contents cues:</strong> ${(details.tocEntryRatio * 100).toFixed(0)}% of lines</p>
           <p><strong>Index cues:</strong> ${details.indexEntryCount} line(s)</p>
         `;
+
+        attachDetailInteractions(pageNumber, details);
+      }
+
+      function attachDetailInteractions(pageNumber, details) {
+        const headerCheckbox = pageDetailsEl.querySelector('[data-header-override]');
+        const footerCheckbox = pageDetailsEl.querySelector('[data-footer-override]');
+        const columnInput = pageDetailsEl.querySelector('[data-column-input]');
+        const columnPreviewBtn = pageDetailsEl.querySelector('[data-column-preview]');
+        const columnClearBtn = pageDetailsEl.querySelector('[data-column-clear]');
+
+        headerCheckbox?.addEventListener('change', () => {
+          if (headerCheckbox.checked) {
+            headerOverridePages.add(pageNumber);
+          } else {
+            headerOverridePages.delete(pageNumber);
+          }
+          renderPageDetails(pageNumber);
+        });
+
+        footerCheckbox?.addEventListener('change', () => {
+          if (footerCheckbox.checked) {
+            footerOverridePages.add(pageNumber);
+          } else {
+            footerOverridePages.delete(pageNumber);
+          }
+          renderPageDetails(pageNumber);
+        });
+
+        columnPreviewBtn?.addEventListener('click', async () => {
+          if (!columnInput || !details.columnCount) return;
+          let column = Number(columnInput.value);
+          if (!Number.isFinite(column)) column = 1;
+          column = Math.min(Math.max(Math.round(column), 1), details.columnCount);
+          columnPreviewSelections.set(pageNumber, column);
+          await renderPage(currentPage);
+          renderPageDetails(pageNumber);
+        });
+
+        columnClearBtn?.addEventListener('click', async () => {
+          columnPreviewSelections.delete(pageNumber);
+          await renderPage(currentPage);
+          renderPageDetails(pageNumber);
+        });
+      }
+
+      function drawColumnOverlay(pageNumber) {
+        const selection = columnPreviewSelections.get(pageNumber);
+        const details = analysis?.pageDetails?.[pageNumber - 1];
+        if (!selection || !details?.columnCount) return;
+
+        const columnCount = details.columnCount;
+        const columnIndex = Math.min(Math.max(selection, 1), columnCount);
+        const columnWidth = canvas.width / columnCount;
+        const x = columnWidth * (columnIndex - 1);
+
+        ctx.save();
+        ctx.fillStyle = 'rgba(18, 89, 255, 0.2)';
+        ctx.fillRect(x, 0, columnWidth, canvas.height);
+        ctx.strokeStyle = 'rgba(18, 89, 255, 0.8)';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(x, 0, columnWidth, canvas.height);
+        ctx.restore();
+      }
+
+      function formatGroupLabel(label = '') {
+        const lower = label.toLowerCase();
+        if (lower.includes('table')) {
+          return 'Mainly TOC';
+        }
+        if (lower.includes('index')) {
+          return 'Mainly Index';
+        }
+        return 'Mainly Text';
       }
 
       async function analyzeDocument(pdf) {
@@ -580,15 +815,25 @@
 
         markdown += `## Page Groups\n`;
         docAnalysis.groups.forEach((group) => {
-          markdown += `- Page ${group.page}: ${group.label}\n`;
+          markdown += `- Page ${group.page}: ${formatGroupLabel(group.label)}\n`;
         });
 
         markdown += `\n## Page Details\n`;
         docAnalysis.pageDetails.forEach((detail) => {
           markdown += `\n### Page ${detail.pageNumber}\n`;
-          markdown += `- Classification: ${detail.groupLabel}\n`;
-          markdown += `- Header: ${detail.headerLine || 'Not detected'}\n`;
-          markdown += `- Footer: ${detail.footerLine || 'Not detected'}\n`;
+          markdown += `- Classification: ${formatGroupLabel(detail.groupLabel)}\n`;
+          const headerText = detail.headerLine || 'Not detected';
+          const footerText = detail.footerLine || 'Not detected';
+          const headerNote =
+            detail.headerLine && headerOverridePages.has(detail.pageNumber)
+              ? `${detail.headerLine} (flagged as normal text)`
+              : headerText;
+          const footerNote =
+            detail.footerLine && footerOverridePages.has(detail.pageNumber)
+              ? `${detail.footerLine} (flagged as normal text)`
+              : footerText;
+          markdown += `- Header: ${headerNote}\n`;
+          markdown += `- Footer: ${footerNote}\n`;
           markdown += `- Estimated columns: ${detail.columnCount || 0}\n`;
           markdown += `- Invisible text items: ${detail.invisibleItems}\n`;
           markdown += `- TOC cues: ${(detail.tocEntryRatio * 100).toFixed(0)}% of lines\n`;
