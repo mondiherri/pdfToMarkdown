@@ -398,6 +398,7 @@
       const headerOverridePages = new Set();
       const footerOverridePages = new Set();
       const columnPreviewSelections = new Map();
+      const textAreaOverlayPages = new Set();
       let headerRememberScope = 'page';
       let footerRememberScope = 'page';
       let headerRememberEnabled = false;
@@ -440,6 +441,7 @@
         pdfFileName = 'pdf-analysis';
         headerOverridePages.clear();
         footerOverridePages.clear();
+        textAreaOverlayPages.clear();
         columnPreviewSelections.clear();
         headerRememberScope = 'page';
         footerRememberScope = 'page';
@@ -624,6 +626,7 @@
           currentRenderTask = null;
         }
         drawColumnOverlay(pageNumber);
+        drawTextAreasOverlay(pageNumber);
       }
 
       function handleResize() {
@@ -644,6 +647,11 @@
         const columnCount = details.columnCount || 0;
         const selectedColumn = columnPreviewSelections.get(pageNumber) || 1;
         const previewActive = columnPreviewSelections.has(pageNumber);
+        const hasTextAreas = Boolean(details.textAreas?.length);
+        const textOverlayActive = textAreaOverlayPages.has(pageNumber);
+        if (!hasTextAreas) {
+          textAreaOverlayPages.delete(pageNumber);
+        }
 
         const columnControlsMarkup = columnCount
           ? `
@@ -667,6 +675,17 @@
             </p>
           `
           : `<p><strong>Estimated columns:</strong> ${columnCount}</p>`;
+
+        const textOverlayControls = hasTextAreas
+          ? `
+            <div class="text-overlay-controls">
+              <label class="override-option">
+                <input type="checkbox" data-text-overlay ${textOverlayActive ? 'checked' : ''} />
+                Highlight text areas
+              </label>
+            </div>
+          `
+          : '';
 
         pageDetailsEl.innerHTML = `
           <p><strong>Classification:</strong> ${normalizedGroupLabel}</p>
@@ -719,6 +738,7 @@
             </div>
           </div>
           ${columnControlsMarkup}
+          ${textOverlayControls}
           <p><strong>Invisible text items:</strong> ${details.invisibleItems}</p>
           <p><strong>Table of contents cues:</strong> ${(details.tocEntryRatio * 100).toFixed(0)}% of lines</p>
           <p><strong>Index cues:</strong> ${details.indexEntryCount} line(s)</p>
@@ -737,6 +757,7 @@
         const columnInput = pageDetailsEl.querySelector('[data-column-input]');
         const columnPreviewBtn = pageDetailsEl.querySelector('[data-column-preview]');
         const columnClearBtn = pageDetailsEl.querySelector('[data-column-clear]');
+        const textOverlayToggle = pageDetailsEl.querySelector('[data-text-overlay]');
 
         headerCheckbox?.addEventListener('change', () => {
           const scope = headerRememberToggle?.checked ? headerScopeSelect?.value || 'page' : 'page';
@@ -792,6 +813,15 @@
           columnPreviewSelections.delete(pageNumber);
           await renderPage(currentPage);
           renderPageDetails(pageNumber);
+        });
+
+        textOverlayToggle?.addEventListener('change', async () => {
+          if (textOverlayToggle.checked) {
+            textAreaOverlayPages.add(pageNumber);
+          } else {
+            textAreaOverlayPages.delete(pageNumber);
+          }
+          await renderPage(currentPage);
         });
       }
 
@@ -903,6 +933,30 @@
         ctx.restore();
       }
 
+      function drawTextAreasOverlay(pageNumber) {
+        if (!analysis || !textAreaOverlayPages.has(pageNumber)) return;
+        const details = analysis.pageDetails[pageNumber - 1];
+        const areas = details?.textAreas;
+        if (!areas?.length) return;
+
+        ctx.save();
+        ctx.fillStyle = 'rgba(255, 165, 0, 0.18)';
+        ctx.strokeStyle = 'rgba(255, 165, 0, 0.9)';
+        ctx.lineWidth = 1;
+
+        areas.forEach((area) => {
+          const x = (area.x || 0) * canvas.width;
+          const y = (area.y || 0) * canvas.height;
+          const width = (area.width || 0) * canvas.width;
+          const height = (area.height || 0) * canvas.height;
+          if (!width || !height) return;
+          ctx.fillRect(x, y, width, height);
+          ctx.strokeRect(x, y, width, height);
+        });
+
+        ctx.restore();
+      }
+
       function formatGroupLabel(label = '') {
         const lower = label.toLowerCase();
         if (lower.includes('table')) {
@@ -930,12 +984,32 @@
           const textContent = await page.getTextContent({ normalizeWhitespace: true });
           const items = textContent.items
             .filter((item) => item.str && item.str.trim())
-            .map((item) => ({
-              text: item.str.trim(),
-              x: item.transform[4],
-              y: item.transform[5],
-              width: item.width ?? Math.abs(item.transform[0]),
-            }));
+            .map((item) => {
+              const width = item.width ?? Math.abs(item.transform[0]) ?? 0;
+              const height = Math.abs(item.transform[3]) || Math.abs(item.transform[1]) || item.height || 0;
+              const rect = viewport.convertToViewportRectangle([
+                item.transform[4],
+                item.transform[5],
+                item.transform[4] + width,
+                item.transform[5] - height,
+              ]);
+              const [rx1 = 0, ry1 = 0, rx2 = 0, ry2 = 0] = rect;
+              const rectX = Math.min(rx1, rx2);
+              const rectY = Math.min(ry1, ry2);
+              const rectWidth = Math.abs(rx1 - rx2);
+              const rectHeight = Math.abs(ry1 - ry2);
+              return {
+                text: item.str.trim(),
+                x: item.transform[4],
+                y: item.transform[5],
+                width,
+                height,
+                normalizedX: viewport.width ? rectX / viewport.width : 0,
+                normalizedY: viewport.height ? rectY / viewport.height : 0,
+                normalizedWidth: viewport.width ? rectWidth / viewport.width : 0,
+                normalizedHeight: viewport.height ? rectHeight / viewport.height : 0,
+              };
+            });
 
           const details = evaluatePage(items, viewport, pageNumber);
           summary.groups.push({ page: pageNumber, label: details.groupLabel });
@@ -980,6 +1054,14 @@
         const groupLabel = classifyPage({ tocEntryRatio, indexEntryCount, hasTocHeading, hasIndexHeading });
         const columnCount = estimateColumnCount(lines, pageWidth);
         const invisibleItems = items.filter((item) => item.width < 0.1).length;
+        const textAreas = items
+          .map((item) => ({
+            x: item.normalizedX || 0,
+            y: item.normalizedY || 0,
+            width: item.normalizedWidth || 0,
+            height: item.normalizedHeight || 0,
+          }))
+          .filter((area) => area.width > 0 && area.height > 0);
 
         return {
           pageNumber,
@@ -992,6 +1074,7 @@
           hasTableOfContentsHeading: hasTocHeading,
           hasIndexHeading,
           groupLabel,
+          textAreas,
         };
       }
 
