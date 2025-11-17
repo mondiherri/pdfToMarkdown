@@ -1,0 +1,1008 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>PDF Structure Analyzer</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        line-height: 1.5;
+        --panel-bg: color-mix(in srgb, canvas, canvastext 4%);
+        --border-color: color-mix(in srgb, canvastext, transparent 85%);
+        --accent: #1259ff;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        background: canvas;
+        color: canvastext;
+        padding: 1.5rem;
+      }
+
+      header,
+      footer {
+        max-width: 1200px;
+        margin: 0 auto 1rem;
+      }
+
+      header h1 {
+        margin-bottom: 0.25rem;
+      }
+
+      main {
+        max-width: 1200px;
+        margin: 0 auto;
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+        gap: 1.5rem;
+      }
+
+      .panel {
+        background: var(--panel-bg);
+        border: 1px solid var(--border-color);
+        border-radius: 16px;
+        padding: 1.25rem;
+        box-shadow: 0 15px 30px color-mix(in srgb, black, transparent 90%);
+      }
+
+      .panel h2 {
+        margin-top: 0;
+      }
+
+      input[type='file'] {
+        display: block;
+        margin-bottom: 0.75rem;
+      }
+
+      .actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+        margin-bottom: 0.75rem;
+      }
+
+      .actions button {
+        background: var(--accent);
+        color: white;
+        border: none;
+        padding: 0.45rem 1rem;
+        border-radius: 999px;
+        cursor: pointer;
+        font-weight: 600;
+      }
+
+      .actions button:disabled {
+        opacity: 0.4;
+        cursor: not-allowed;
+      }
+
+      .hint {
+        margin-top: 0;
+        font-size: 0.9rem;
+        color: color-mix(in srgb, canvastext, transparent 35%);
+      }
+
+      .summary p,
+      .details p {
+        margin: 0.2rem 0;
+      }
+
+      .page-groups {
+        list-style: none;
+        padding-left: 0;
+        margin: 0.5rem 0 0;
+        max-height: 240px;
+        overflow-y: auto;
+        border: 1px solid var(--border-color);
+        border-radius: 8px;
+      }
+
+      .page-groups li {
+        padding: 0.4rem 0.6rem;
+        border-bottom: 1px solid var(--border-color);
+        font-size: 0.95rem;
+      }
+
+      .page-groups li:last-child {
+        border-bottom: none;
+      }
+
+      .page-groups li.highlight {
+        background: darkorange;
+        color: white;
+      }
+
+      .page-controls {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+        align-items: center;
+        margin-bottom: 0.75rem;
+      }
+
+      .page-controls input[type='number'] {
+        width: 4.5rem;
+        padding: 0.25rem 0.35rem;
+        border: 1px solid var(--border-color);
+        border-radius: 6px;
+        font: inherit;
+      }
+
+      .page-controls button:enabled {
+        background: var(--accent);
+        color: white;
+        border: none;
+        padding: 0.35rem 0.8rem;
+        border-radius: 6px;
+        cursor: pointer;
+      }
+
+      .page-controls button:disabled {
+        opacity: 0.5;
+      }
+
+      .preview {
+        width: 100%;
+        max-width: 500px;
+        border: 1px solid var(--border-color);
+        border-radius: 8px;
+        background: white;
+        display: block;
+      }
+
+      .detail-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+        align-items: center;
+        margin: 0.35rem 0;
+      }
+
+      .override-option {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.3rem;
+        font-size: 0.9rem;
+      }
+
+      .override-set {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+        align-items: center;
+      }
+
+      .override-option select {
+        font: inherit;
+        padding: 0.2rem 0.35rem;
+        border: 1px solid var(--border-color);
+        border-radius: 6px;
+        background: canvas;
+        color: inherit;
+      }
+
+      .column-line {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+        align-items: center;
+        margin: 0.4rem 0;
+      }
+
+      .column-controls {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.4rem;
+        align-items: center;
+      }
+
+      .column-controls input[type='number'] {
+        width: 4rem;
+        padding: 0.25rem;
+        border: 1px solid var(--border-color);
+        border-radius: 6px;
+        font: inherit;
+      }
+
+      .column-controls button {
+        background: var(--accent);
+        color: white;
+        border: none;
+        padding: 0.25rem 0.65rem;
+        border-radius: 6px;
+        cursor: pointer;
+      }
+
+      .column-controls button:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
+
+      .column-preview-status {
+        font-size: 0.9rem;
+        margin: 0.2rem 0 0.5rem;
+        color: color-mix(in srgb, canvastext, transparent 25%);
+      }
+
+      #loading {
+        min-height: 1.2rem;
+        font-style: italic;
+      }
+
+      @media (max-width: 720px) {
+        body {
+          padding: 1rem;
+        }
+
+        main {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>PDF Structure Analyzer</h1>
+      <p>
+        Upload a legal PDF to inspect its pagination, detect table of contents or index pages,
+        and examine headers, footers, column counts, and invisible text on any page.
+      </p>
+    </header>
+
+    <main>
+      <section class="panel">
+        <h2>1. Upload PDF</h2>
+        <input type="file" id="pdfInput" accept="application/pdf" />
+        <p class="hint">
+          All analysis runs locally in your browser using Mozilla's pdf.js library; the document never leaves your device.
+        </p>
+        <div class="actions" aria-label="Document actions">
+          <button id="analyzeBtn" disabled>Analyze</button>
+          <button id="previewBtn" disabled>Preview</button>
+          <button id="extractBtn" disabled>Extract</button>
+        </div>
+        <div id="loading" aria-live="polite"></div>
+      </section>
+
+      <section class="panel">
+        <h2>2. Document Overview</h2>
+        <div id="summary" class="summary">Load a document to view its metadata.</div>
+        <div>
+          <h3>Page groups</h3>
+          <ul id="pageGroups" class="page-groups"></ul>
+        </div>
+      </section>
+
+      <section class="panel" id="previewPanel">
+        <h2>3. Page Details & Preview</h2>
+        <div class="page-controls">
+          <label for="pageSelect">Jump to page:</label>
+          <input id="pageSelect" type="number" min="1" disabled />
+          <button id="prevPage" disabled>Previous page</button>
+          <button id="nextPage" disabled>Next page</button>
+          <span id="pageIndicator"></span>
+        </div>
+        <div id="pageDetails" class="details">Select a page to inspect its structure.</div>
+        <canvas id="pageCanvas" class="preview" aria-label="PDF page preview"></canvas>
+      </section>
+    </main>
+
+    <footer>
+      <p>
+        Built with <a href="https://mozilla.github.io/pdf.js/" target="_blank" rel="noreferrer">pdf.js</a> to
+        accelerate legal-document ingestion for knowledge bases.
+      </p>
+    </footer>
+
+    <script type="module">
+      import * as pdfjsLib from 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168/pdf.mjs';
+
+      pdfjsLib.GlobalWorkerOptions.workerSrc =
+        'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168/pdf.worker.min.mjs';
+
+      const fileInput = document.getElementById('pdfInput');
+      const loadingEl = document.getElementById('loading');
+      const summaryEl = document.getElementById('summary');
+      const pageGroupsEl = document.getElementById('pageGroups');
+      const pageDetailsEl = document.getElementById('pageDetails');
+      const pageSelectEl = document.getElementById('pageSelect');
+      const prevButton = document.getElementById('prevPage');
+      const nextButton = document.getElementById('nextPage');
+      const pageIndicator = document.getElementById('pageIndicator');
+      const canvas = document.getElementById('pageCanvas');
+      const ctx = canvas.getContext('2d');
+      const analyzeButton = document.getElementById('analyzeBtn');
+      const previewButton = document.getElementById('previewBtn');
+      const extractButton = document.getElementById('extractBtn');
+      const previewPanel = document.getElementById('previewPanel');
+
+      let pdfDoc = null;
+      let analysis = null;
+      let currentPage = 1;
+      let pdfData = null;
+      let pdfFileName = 'pdf-analysis';
+      const headerOverridePages = new Set();
+      const footerOverridePages = new Set();
+      const columnPreviewSelections = new Map();
+      let pageGroupRanges = [];
+      let headerRememberScope = 'page';
+      let footerRememberScope = 'page';
+      let headerRememberEnabled = false;
+      let footerRememberEnabled = false;
+
+      fileInput.addEventListener('change', handleFileSelection);
+      prevButton.addEventListener('click', () => goToPage(currentPage - 1));
+      nextButton.addEventListener('click', () => goToPage(currentPage + 1));
+      pageSelectEl.addEventListener('change', handlePageInput);
+      analyzeButton.addEventListener('click', () => runAnalysis());
+      previewButton.addEventListener('click', focusPreviewPanel);
+      extractButton.addEventListener('click', exportAnalysisReport);
+
+      function setLoading(message = '') {
+        loadingEl.textContent = message;
+      }
+
+      async function handleFileSelection(event) {
+        const file = event.target.files?.[0];
+        resetUi();
+        if (!file) {
+          setLoading('');
+          return;
+        }
+
+        setLoading('Reading PDF…');
+        pdfData = new Uint8Array(await file.arrayBuffer());
+        const baseName = file.name?.replace(/\.pdf$/i, '') || 'pdf-analysis';
+        pdfFileName = baseName.replace(/[^a-z0-9-_]+/gi, '-').toLowerCase() || 'pdf-analysis';
+        analyzeButton.disabled = false;
+        setLoading('Ready. Click Analyze to inspect the document.');
+      }
+
+      function resetUi() {
+        analysis = null;
+        pdfDoc = null;
+        currentPage = 1;
+        pdfData = null;
+        pdfFileName = 'pdf-analysis';
+        headerOverridePages.clear();
+        footerOverridePages.clear();
+        columnPreviewSelections.clear();
+        pageGroupRanges = [];
+        headerRememberScope = 'page';
+        footerRememberScope = 'page';
+        headerRememberEnabled = false;
+        footerRememberEnabled = false;
+        summaryEl.textContent = 'Load a document to view its metadata.';
+        pageGroupsEl.innerHTML = '';
+        pageDetailsEl.textContent = 'Select a page to inspect its structure.';
+        pageSelectEl.value = '';
+        pageSelectEl.disabled = true;
+        pageSelectEl.removeAttribute('max');
+        pageSelectEl.removeAttribute('min');
+        pageSelectEl.removeAttribute('step');
+        prevButton.disabled = true;
+        nextButton.disabled = true;
+        pageIndicator.textContent = '';
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        analyzeButton.disabled = true;
+        previewButton.disabled = true;
+        extractButton.disabled = true;
+        setLoading('');
+      }
+
+      async function runAnalysis() {
+        if (!pdfData) {
+          setLoading('Select a PDF to analyze.');
+          return;
+        }
+
+        analyzeButton.disabled = true;
+        previewButton.disabled = true;
+        extractButton.disabled = true;
+        headerOverridePages.clear();
+        footerOverridePages.clear();
+        columnPreviewSelections.clear();
+
+        setLoading('Loading PDF…');
+        pdfDoc = await pdfjsLib.getDocument({ data: pdfData }).promise;
+        setLoading('Analyzing document structure…');
+        analysis = await analyzeDocument(pdfDoc);
+        setLoading('');
+
+        renderSummary(analysis);
+        renderPageGroups(analysis.groups);
+        populatePageSelect(pdfDoc.numPages);
+        await renderPage(1);
+        renderPageDetails(1);
+        previewButton.disabled = false;
+        extractButton.disabled = false;
+        analyzeButton.disabled = false;
+      }
+
+      function renderSummary(docAnalysis) {
+        if (!docAnalysis) return;
+        const tocSummary = docAnalysis.tableOfContentsPages.length
+          ? `Detected on page(s): ${docAnalysis.tableOfContentsPages.join(', ')}`
+          : 'Not detected';
+
+        const groupCounts = docAnalysis.groups.reduce((acc, group) => {
+          const formatted = formatGroupLabel(group.label);
+          acc[formatted] = (acc[formatted] || 0) + 1;
+          return acc;
+        }, {});
+
+        const groupList = Object.entries(groupCounts)
+          .map(([label, count]) => `<li><strong>${label}</strong>: ${count} page(s)</li>`)
+          .join('');
+
+        summaryEl.innerHTML = `
+          <p><strong>Pages:</strong> ${docAnalysis.pageCount}</p>
+          <p><strong>Table of contents:</strong> ${tocSummary}</p>
+          <p><strong>Index pages detected:</strong> ${docAnalysis.indexPages.length ? docAnalysis.indexPages.join(', ') : 'Not detected'}</p>
+          <div>
+            <p><strong>Page distribution:</strong></p>
+            <ul>${groupList || '<li>No pages analyzed</li>'}</ul>
+          </div>
+        `;
+      }
+
+      function renderPageGroups(groups) {
+        if (!groups?.length) {
+          pageGroupsEl.innerHTML = '<li>No pages analyzed</li>';
+          pageGroupRanges = [];
+          return;
+        }
+
+        const ranges = [];
+        groups.forEach((entry) => {
+          const last = ranges[ranges.length - 1];
+          if (last && last.label === entry.label && last.end === entry.page - 1) {
+            last.end = entry.page;
+          } else {
+            ranges.push({ start: entry.page, end: entry.page, label: entry.label });
+          }
+        });
+
+        pageGroupRanges = ranges;
+
+        pageGroupsEl.innerHTML = ranges
+          .map((range) => {
+            const label = formatGroupLabel(range.label);
+            const rangeText = range.start === range.end ? `Page ${range.start}` : `Pages ${range.start}-${range.end}`;
+            return `<li data-range-start="${range.start}" data-range-end="${range.end}">${rangeText}: ${label}</li>`;
+          })
+          .join('');
+      }
+
+      function populatePageSelect(pageCount) {
+        pageSelectEl.disabled = false;
+        pageSelectEl.min = '1';
+        pageSelectEl.max = String(pageCount);
+        pageSelectEl.step = '1';
+        pageSelectEl.value = '1';
+        prevButton.disabled = false;
+        nextButton.disabled = false;
+        pageIndicator.textContent = `Page 1 of ${pageCount}`;
+      }
+
+      function handlePageInput(event) {
+        if (!pdfDoc) {
+          event.target.value = '';
+          return;
+        }
+        const value = Number(event.target.value);
+        if (!Number.isFinite(value)) {
+          event.target.value = String(currentPage);
+          return;
+        }
+        const clamped = Math.min(Math.max(Math.round(value), 1), pdfDoc.numPages);
+        event.target.value = String(clamped);
+        goToPage(clamped);
+      }
+
+      async function goToPage(pageNumber) {
+        if (!pdfDoc || pageNumber < 1 || pageNumber > pdfDoc.numPages) return;
+        currentPage = pageNumber;
+        pageSelectEl.value = String(pageNumber);
+        pageIndicator.textContent = `Page ${pageNumber} of ${pdfDoc.numPages}`;
+        renderPageDetails(pageNumber);
+        await renderPage(pageNumber);
+        prevButton.disabled = pageNumber === 1;
+        nextButton.disabled = pageNumber === pdfDoc.numPages;
+      }
+
+      function focusPreviewPanel() {
+        if (!pdfDoc) return;
+        previewPanel?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+
+      async function renderPage(pageNumber) {
+        const page = await pdfDoc.getPage(pageNumber);
+        const viewport = page.getViewport({ scale: 1.25 });
+        canvas.height = viewport.height;
+        canvas.width = viewport.width;
+
+        const renderContext = {
+          canvasContext: ctx,
+          viewport,
+        };
+
+        await page.render(renderContext).promise;
+        drawColumnOverlay(pageNumber);
+      }
+
+      function renderPageDetails(pageNumber) {
+        if (!analysis) return;
+        const details = analysis.pageDetails[pageNumber - 1];
+        if (!details) return;
+
+        const normalizedGroupLabel = formatGroupLabel(details.groupLabel);
+        const headerFlagged = headerOverridePages.has(pageNumber);
+        const footerFlagged = footerOverridePages.has(pageNumber);
+        const headerDetected = Boolean(details.headerLine);
+        const footerDetected = Boolean(details.footerLine);
+        const columnCount = details.columnCount || 0;
+        const selectedColumn = columnPreviewSelections.get(pageNumber) || 1;
+        const previewActive = columnPreviewSelections.has(pageNumber);
+
+        const columnControlsMarkup = columnCount
+          ? `
+            <div class="column-line">
+              <p><strong>Estimated columns:</strong> ${columnCount}</p>
+              <div class="column-controls">
+                <label>
+                  Column
+                  <input type="number" min="1" max="${columnCount}" value="${Math.min(selectedColumn, columnCount)}" data-column-input />
+                </label>
+                <button type="button" data-column-preview>Show raster</button>
+                <button type="button" data-column-clear ${previewActive ? '' : 'disabled'}>Clear</button>
+              </div>
+            </div>
+            <p class="column-preview-status">
+              ${
+                previewActive
+                  ? `Previewing column ${Math.min(selectedColumn, columnCount)} of ${columnCount}.`
+                  : 'Enter a column number to overlay its raster on the preview.'
+              }
+            </p>
+          `
+          : `<p><strong>Estimated columns:</strong> ${columnCount}</p>`;
+
+        pageDetailsEl.innerHTML = `
+          <p><strong>Classification:</strong> ${normalizedGroupLabel}</p>
+          <div class="detail-row">
+            <p><strong>Detected header:</strong> ${details.headerLine || 'Not detected'}${
+              headerFlagged ? ' <em>(flagged as normal text)</em>' : ''
+            }</p>
+            <div class="override-set">
+              <label class="override-option">
+                <input type="checkbox" data-header-override ${headerDetected ? '' : 'disabled'} ${
+                  headerFlagged ? 'checked' : ''
+                } />
+                Treat as normal text
+              </label>
+              <label class="override-option">
+                <input type="checkbox" data-header-remember ${headerDetected ? '' : 'disabled'} ${
+                  headerRememberEnabled ? 'checked' : ''
+                } />
+                Remember for
+                <select data-header-scope ${
+                  headerDetected && headerRememberEnabled ? '' : 'disabled'
+                }>
+                  ${buildScopeOptions(headerRememberScope)}
+                </select>
+              </label>
+            </div>
+          </div>
+          <div class="detail-row">
+            <p><strong>Detected footer:</strong> ${details.footerLine || 'Not detected'}${
+              footerFlagged ? ' <em>(flagged as normal text)</em>' : ''
+            }</p>
+            <div class="override-set">
+              <label class="override-option">
+                <input type="checkbox" data-footer-override ${footerDetected ? '' : 'disabled'} ${
+                  footerFlagged ? 'checked' : ''
+                } />
+                Treat as normal text
+              </label>
+              <label class="override-option">
+                <input type="checkbox" data-footer-remember ${footerDetected ? '' : 'disabled'} ${
+                  footerRememberEnabled ? 'checked' : ''
+                } />
+                Remember for
+                <select data-footer-scope ${
+                  footerDetected && footerRememberEnabled ? '' : 'disabled'
+                }>
+                  ${buildScopeOptions(footerRememberScope)}
+                </select>
+              </label>
+            </div>
+          </div>
+          ${columnControlsMarkup}
+          <p><strong>Invisible text items:</strong> ${details.invisibleItems}</p>
+          <p><strong>Table of contents cues:</strong> ${(details.tocEntryRatio * 100).toFixed(0)}% of lines</p>
+          <p><strong>Index cues:</strong> ${details.indexEntryCount} line(s)</p>
+        `;
+
+        attachDetailInteractions(pageNumber, details, normalizedGroupLabel);
+      }
+
+      function attachDetailInteractions(pageNumber, details, normalizedGroupLabel) {
+        const headerCheckbox = pageDetailsEl.querySelector('[data-header-override]');
+        const footerCheckbox = pageDetailsEl.querySelector('[data-footer-override]');
+        const headerRememberToggle = pageDetailsEl.querySelector('[data-header-remember]');
+        const footerRememberToggle = pageDetailsEl.querySelector('[data-footer-remember]');
+        const headerScopeSelect = pageDetailsEl.querySelector('[data-header-scope]');
+        const footerScopeSelect = pageDetailsEl.querySelector('[data-footer-scope]');
+        const columnInput = pageDetailsEl.querySelector('[data-column-input]');
+        const columnPreviewBtn = pageDetailsEl.querySelector('[data-column-preview]');
+        const columnClearBtn = pageDetailsEl.querySelector('[data-column-clear]');
+
+        headerCheckbox?.addEventListener('change', () => {
+          const scope = headerRememberToggle?.checked ? headerScopeSelect?.value || 'page' : 'page';
+          applyOverrideChange({
+            type: 'header',
+            pageNumber,
+            isChecked: headerCheckbox.checked,
+            scope,
+            groupLabel: normalizedGroupLabel,
+          });
+        });
+
+        footerCheckbox?.addEventListener('change', () => {
+          const scope = footerRememberToggle?.checked ? footerScopeSelect?.value || 'page' : 'page';
+          applyOverrideChange({
+            type: 'footer',
+            pageNumber,
+            isChecked: footerCheckbox.checked,
+            scope,
+            groupLabel: normalizedGroupLabel,
+          });
+        });
+
+        headerRememberToggle?.addEventListener('change', () => {
+          headerRememberEnabled = headerRememberToggle.checked;
+          if (headerScopeSelect) headerScopeSelect.disabled = !headerRememberToggle.checked;
+        });
+
+        footerRememberToggle?.addEventListener('change', () => {
+          footerRememberEnabled = footerRememberToggle.checked;
+          if (footerScopeSelect) footerScopeSelect.disabled = !footerRememberToggle.checked;
+        });
+
+        headerScopeSelect?.addEventListener('change', () => {
+          headerRememberScope = headerScopeSelect.value;
+        });
+
+        footerScopeSelect?.addEventListener('change', () => {
+          footerRememberScope = footerScopeSelect.value;
+        });
+
+        columnPreviewBtn?.addEventListener('click', async () => {
+          if (!columnInput || !details.columnCount) return;
+          let column = Number(columnInput.value);
+          if (!Number.isFinite(column)) column = 1;
+          column = Math.min(Math.max(Math.round(column), 1), details.columnCount);
+          columnPreviewSelections.set(pageNumber, column);
+          await renderPage(currentPage);
+          renderPageDetails(pageNumber);
+        });
+
+        columnClearBtn?.addEventListener('click', async () => {
+          columnPreviewSelections.delete(pageNumber);
+          await renderPage(currentPage);
+          renderPageDetails(pageNumber);
+        });
+      }
+
+      function applyOverrideChange({ type, pageNumber, isChecked, scope, groupLabel }) {
+        const targetSet = type === 'header' ? headerOverridePages : footerOverridePages;
+        const targetPages = getPagesForScope(scope, pageNumber, groupLabel);
+        targetPages.forEach((page) => {
+          if (isChecked) {
+            targetSet.add(page);
+          } else {
+            targetSet.delete(page);
+          }
+        });
+
+        if (targetPages.length) {
+          highlightPageGroups(scope, targetPages);
+        }
+
+        renderPageDetails(pageNumber);
+      }
+
+      function getPagesForScope(scope, pageNumber, groupLabel) {
+        if (!analysis) return [pageNumber];
+        if (scope === 'document') {
+          return analysis.pageDetails.map((detail) => detail.pageNumber);
+        }
+        if (scope === 'group') {
+          return analysis.pageDetails
+            .filter((detail) => formatGroupLabel(detail.groupLabel) === groupLabel)
+            .map((detail) => detail.pageNumber);
+        }
+        return [pageNumber];
+      }
+
+      function highlightPageGroups(scope, pages = []) {
+        if (!pageGroupRanges.length) return;
+        const items = pageGroupsEl.querySelectorAll('li');
+        if (!items.length) return;
+        const duration = 2000;
+
+        if (scope === 'document') {
+          items.forEach((item) => {
+            item.classList.add('highlight');
+            setTimeout(() => item.classList.remove('highlight'), duration);
+          });
+          return;
+        }
+
+        if (!pages.length) return;
+        const indices = new Set();
+        pageGroupRanges.forEach((range, index) => {
+          const matches = pages.some((page) => page >= range.start && page <= range.end);
+          if (matches) {
+            indices.add(index);
+          }
+        });
+
+        items.forEach((item, index) => {
+          if (indices.has(index)) {
+            item.classList.add('highlight');
+            setTimeout(() => item.classList.remove('highlight'), duration);
+          }
+        });
+      }
+
+      function buildScopeOptions(selectedValue = 'page') {
+        return `
+          <option value="page" ${selectedValue === 'page' ? 'selected' : ''}>Only this page</option>
+          <option value="group" ${selectedValue === 'group' ? 'selected' : ''}>All pages in this group</option>
+          <option value="document" ${selectedValue === 'document' ? 'selected' : ''}>All pages in the document</option>
+        `;
+      }
+
+      function drawColumnOverlay(pageNumber) {
+        const selection = columnPreviewSelections.get(pageNumber);
+        const details = analysis?.pageDetails?.[pageNumber - 1];
+        if (!selection || !details?.columnCount) return;
+
+        const columnCount = details.columnCount;
+        const columnIndex = Math.min(Math.max(selection, 1), columnCount);
+        const columnWidth = canvas.width / columnCount;
+        const x = columnWidth * (columnIndex - 1);
+
+        ctx.save();
+        ctx.fillStyle = 'rgba(18, 89, 255, 0.2)';
+        ctx.fillRect(x, 0, columnWidth, canvas.height);
+        ctx.strokeStyle = 'rgba(18, 89, 255, 0.8)';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(x, 0, columnWidth, canvas.height);
+        ctx.restore();
+      }
+
+      function formatGroupLabel(label = '') {
+        const lower = label.toLowerCase();
+        if (lower.includes('table')) {
+          return 'Mainly TOC';
+        }
+        if (lower.includes('index')) {
+          return 'Mainly Index';
+        }
+        return 'Mainly Text';
+      }
+
+      async function analyzeDocument(pdf) {
+        const summary = {
+          pageCount: pdf.numPages,
+          tableOfContentsPages: [],
+          indexPages: [],
+          groups: [],
+          pageDetails: [],
+        };
+
+        for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
+          setLoading(`Analyzing page ${pageNumber} of ${pdf.numPages}…`);
+          const page = await pdf.getPage(pageNumber);
+          const viewport = page.getViewport({ scale: 1 });
+          const textContent = await page.getTextContent({ normalizeWhitespace: true });
+          const items = textContent.items
+            .filter((item) => item.str && item.str.trim())
+            .map((item) => ({
+              text: item.str.trim(),
+              x: item.transform[4],
+              y: item.transform[5],
+              width: item.width ?? Math.abs(item.transform[0]),
+            }));
+
+          const details = evaluatePage(items, viewport, pageNumber);
+          summary.groups.push({ page: pageNumber, label: details.groupLabel });
+          summary.pageDetails.push(details);
+
+          if (details.hasTableOfContentsHeading || details.tocEntryRatio > 0.3) {
+            summary.tableOfContentsPages.push(pageNumber);
+          }
+          if (details.hasIndexHeading || details.indexEntryCount > 3) {
+            summary.indexPages.push(pageNumber);
+          }
+        }
+
+        return summary;
+      }
+
+      function evaluatePage(items, viewport, pageNumber) {
+        const lines = buildLines(items);
+        const pageWidth = viewport.width || 1;
+        const headerLine = lines.find((line) => line.relativeY > 0.85)?.text ?? '';
+        const footerLine = [...lines].reverse().find((line) => line.relativeY < 0.15)?.text ?? '';
+
+        let tocEntryCount = 0;
+        let indexEntryCount = 0;
+        let hasTocHeading = false;
+        let hasIndexHeading = false;
+
+        lines.forEach((line) => {
+          const lower = line.text.toLowerCase();
+          if (lower.includes('table of contents') || lower === 'contents') {
+            hasTocHeading = true;
+          }
+          if (lower.startsWith('index') || lower.includes('alphabetical index')) {
+            hasIndexHeading = true;
+          }
+
+          if (looksLikeTocEntry(line.text)) tocEntryCount += 1;
+          if (looksLikeIndexEntry(line.text)) indexEntryCount += 1;
+        });
+
+        const tocEntryRatio = lines.length ? tocEntryCount / lines.length : 0;
+        const groupLabel = classifyPage({ tocEntryRatio, indexEntryCount, hasTocHeading, hasIndexHeading });
+        const columnCount = estimateColumnCount(lines, pageWidth);
+        const invisibleItems = items.filter((item) => item.width < 0.1).length;
+
+        return {
+          pageNumber,
+          headerLine,
+          footerLine,
+          columnCount,
+          invisibleItems,
+          tocEntryRatio,
+          indexEntryCount,
+          hasTableOfContentsHeading: hasTocHeading,
+          hasIndexHeading,
+          groupLabel,
+        };
+      }
+
+      function buildLines(items) {
+        const lineMap = new Map();
+        items.forEach((item) => {
+          const key = Math.round(item.y / 2);
+          const row = lineMap.get(key) || [];
+          row.push(item);
+          lineMap.set(key, row);
+        });
+
+        const lines = [...lineMap.entries()]
+          .map(([key, row]) => {
+            const sorted = row.sort((a, b) => a.x - b.x);
+            const text = sorted.map((item) => item.text).join(' ').replace(/\s{2,}/g, ' ').trim();
+            const y = key * 2;
+            const minX = sorted.length ? sorted[0].x : 0;
+            return { text, y, minX };
+          })
+          .filter((line) => line.text)
+          .sort((a, b) => b.y - a.y);
+
+        const maxY = lines[0]?.y ?? 1;
+        const minY = lines[lines.length - 1]?.y ?? 0;
+        const span = Math.max(maxY - minY, 1);
+
+        return lines.map((line) => ({
+          ...line,
+          relativeY: (line.y - minY) / span,
+        }));
+      }
+
+      function looksLikeTocEntry(line) {
+        const dottedLeader = /\.{2,}/.test(line);
+        const endingPageNumber = /\s\d{1,4}$/.test(line);
+        const hasLetters = /[A-Za-z]/.test(line);
+        return hasLetters && (dottedLeader || endingPageNumber);
+      }
+
+      function looksLikeIndexEntry(line) {
+        const pattern = /^[A-Z](?:[A-Za-z\s,\-]+)?\s+\d{1,4}$/;
+        return pattern.test(line.trim());
+      }
+
+      function classifyPage({ tocEntryRatio, indexEntryCount, hasTocHeading, hasIndexHeading }) {
+        if (hasTocHeading || tocEntryRatio >= 0.35) {
+          return 'mainly Table of contents';
+        }
+        if (hasIndexHeading || indexEntryCount >= 4) {
+          return 'mainly index';
+        }
+        return 'mainly text';
+      }
+
+      function estimateColumnCount(lines, pageWidth) {
+        const xPositions = lines.map((line) => line.minX).filter((x) => Number.isFinite(x));
+        if (!xPositions.length || !pageWidth) return 0;
+        xPositions.sort((a, b) => a - b);
+        let clusters = 1;
+        const threshold = pageWidth * 0.15;
+        for (let i = 1; i < xPositions.length; i += 1) {
+          if (Math.abs(xPositions[i] - xPositions[i - 1]) > threshold) {
+            clusters += 1;
+          }
+        }
+        return Math.min(clusters, 4);
+      }
+
+      function exportAnalysisReport() {
+        if (!analysis) return;
+        const markdown = buildMarkdownReport(analysis);
+        const blob = new Blob([markdown], { type: 'text/markdown' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `${pdfFileName || 'pdf-analysis'}-structure.md`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+      }
+
+      function buildMarkdownReport(docAnalysis) {
+        const tocPages = docAnalysis.tableOfContentsPages.length
+          ? docAnalysis.tableOfContentsPages.join(', ')
+          : 'Not detected';
+        const indexPages = docAnalysis.indexPages.length ? docAnalysis.indexPages.join(', ') : 'Not detected';
+
+        let markdown = `# PDF Analysis Report\n\n`;
+        markdown += `- **Pages**: ${docAnalysis.pageCount}\n`;
+        markdown += `- **Table of contents**: ${tocPages}\n`;
+        markdown += `- **Index pages**: ${indexPages}\n\n`;
+
+        markdown += `## Page Groups\n`;
+        docAnalysis.groups.forEach((group) => {
+          markdown += `- Page ${group.page}: ${formatGroupLabel(group.label)}\n`;
+        });
+
+        markdown += `\n## Page Details\n`;
+        docAnalysis.pageDetails.forEach((detail) => {
+          markdown += `\n### Page ${detail.pageNumber}\n`;
+          markdown += `- Classification: ${formatGroupLabel(detail.groupLabel)}\n`;
+          const headerText = detail.headerLine || 'Not detected';
+          const footerText = detail.footerLine || 'Not detected';
+          const headerNote =
+            detail.headerLine && headerOverridePages.has(detail.pageNumber)
+              ? `${detail.headerLine} (flagged as normal text)`
+              : headerText;
+          const footerNote =
+            detail.footerLine && footerOverridePages.has(detail.pageNumber)
+              ? `${detail.footerLine} (flagged as normal text)`
+              : footerText;
+          markdown += `- Header: ${headerNote}\n`;
+          markdown += `- Footer: ${footerNote}\n`;
+          markdown += `- Estimated columns: ${detail.columnCount || 0}\n`;
+          markdown += `- Invisible text items: ${detail.invisibleItems}\n`;
+          markdown += `- TOC cues: ${(detail.tocEntryRatio * 100).toFixed(0)}% of lines\n`;
+          markdown += `- Index cues: ${detail.indexEntryCount}\n`;
+        });
+
+        return markdown;
+      }
+    </script>
+  </body>
+</html>
