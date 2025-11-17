@@ -1,0 +1,16 @@
+{
+  "name": "pdf-structure-analyzer",
+  "version": "0.2.0",
+  "description": "Browser-based pdf.js playground for legal PDF inspection.",
+  "scripts": {
+    "start": "echo 'Open index.html in your browser to use the analyzer.'"
+  },
+  "keywords": [
+    "pdf",
+    "legal",
+    "analysis",
+    "pdf.js"
+  ],
+  "author": "",
+  "license": "CC0-1.0"
+}
