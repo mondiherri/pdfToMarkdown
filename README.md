@@ -10,21 +10,23 @@ all parsing, heuristics, and rendering run on the client.
 - **Page grouping** – classify every page as mainly text, mainly table of contents, or mainly index based on the text layout.
 - **Structural cues** – for text-heavy pages the tool estimates repeating headers, footers, column counts, and invisible text items.
 - **Live preview** – render any page with previous/next navigation so you can visually verify the heuristics.
+- **Action shortcuts** – Analyze, Preview, and Extract buttons keep the workflow focused and export a Markdown snapshot of the findings.
 
 ## Usage
 
 1. Clone or download this repository.
 2. Open `index.html` in any modern browser (Chrome, Edge, Firefox, or Safari).
-3. Upload a PDF using the file picker and wait for the analysis to finish.
-4. Browse the detected page groups, select a page from the dropdown, and inspect its metadata alongside a canvas preview.
+3. Upload a PDF using the file picker, then click **Analyze** to process it.
+4. Use **Preview** to jump to the canvas viewer and page details, or **Extract** to download a Markdown summary of the analysis.
+5. Browse the detected page groups, select a page from the dropdown, and inspect its metadata alongside the preview.
 
-Because the project is fully static there is no build step and `npm install` is not required. If you prefer to serve the
-page locally over HTTP, any static server (for example `python -m http.server`) will work.
+Because the project is fully static there is no build step and `npm install` is not required. Everything—markup, styling,
+and JavaScript—lives directly inside `index.html`, so you can email or host a single self-contained file. If you prefer to
+serve the page locally over HTTP, any static server (for example `python -m http.server`) will work.
 
 ## Implementation notes
 
-- The UI is defined in `index.html` and styled via `styles.css`.
-- `src/app.js` is a browser module that imports pdf.js from a CDN, loads the uploaded file, and executes the heuristics.
+- The UI, styling, and browser logic all live in `index.html`, which imports pdf.js from a CDN at runtime.
 - Table-of-contents pages are detected by searching for explicit headings (`"Table of Contents"`) and by spotting lines
   that end with page numbers or dotted leaders. Index pages rely on similar patterns (alphabetized entries followed by
   numbers).
