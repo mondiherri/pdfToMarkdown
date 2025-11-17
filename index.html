@@ -307,6 +307,11 @@
     </header>
 
     <main>
+      <section class="panel preview-panel" id="previewPanel">
+        <h3>Live Preview</h3>
+        <canvas id="pageCanvas" class="preview" aria-label="PDF page preview"></canvas>
+      </section>
+      
       <div class="panels-column">
         <section class="panel">
           <h2>1. Upload PDF</h2>
@@ -337,23 +342,10 @@
           </div>
         </section>
 
-        <section class="panel">
-          <h2>3. Page Details</h2>
-          <div class="page-controls">
-            <label for="pageSelect">Jump to page:</label>
-            <input id="pageSelect" type="number" min="1" disabled />
-            <button id="prevPage" disabled>Previous page</button>
-            <button id="nextPage" disabled>Next page</button>
-            <span id="pageIndicator"></span>
-          </div>
-          <div id="pageDetails" class="details">Select a page to inspect its structure.</div>
-        </section>
+
       </div>
 
-      <section class="panel preview-panel" id="previewPanel">
-        <h2>4. Live Preview</h2>
-        <canvas id="pageCanvas" class="preview" aria-label="PDF page preview"></canvas>
-      </section>
+      
     </main>
 
     <footer>
