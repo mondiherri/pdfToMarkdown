@@ -114,6 +114,11 @@
         border-bottom: none;
       }
 
+      .page-groups li.highlight {
+        background: darkorange;
+        color: white;
+      }
+
       .page-controls {
         display: flex;
         flex-wrap: wrap;
@@ -165,6 +170,22 @@
         align-items: center;
         gap: 0.3rem;
         font-size: 0.9rem;
+      }
+
+      .override-set {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+        align-items: center;
+      }
+
+      .override-option select {
+        font: inherit;
+        padding: 0.2rem 0.35rem;
+        border: 1px solid var(--border-color);
+        border-radius: 6px;
+        background: canvas;
+        color: inherit;
       }
 
       .column-line {
@@ -310,6 +331,11 @@
       const headerOverridePages = new Set();
       const footerOverridePages = new Set();
       const columnPreviewSelections = new Map();
+      let pageGroupRanges = [];
+      let headerRememberScope = 'page';
+      let footerRememberScope = 'page';
+      let headerRememberEnabled = false;
+      let footerRememberEnabled = false;
 
       fileInput.addEventListener('change', handleFileSelection);
       prevButton.addEventListener('click', () => goToPage(currentPage - 1));
@@ -348,6 +374,11 @@
         headerOverridePages.clear();
         footerOverridePages.clear();
         columnPreviewSelections.clear();
+        pageGroupRanges = [];
+        headerRememberScope = 'page';
+        footerRememberScope = 'page';
+        headerRememberEnabled = false;
+        footerRememberEnabled = false;
         summaryEl.textContent = 'Load a document to view its metadata.';
         pageGroupsEl.innerHTML = '';
         pageDetailsEl.textContent = 'Select a page to inspect its structure.';
@@ -425,6 +456,7 @@
       function renderPageGroups(groups) {
         if (!groups?.length) {
           pageGroupsEl.innerHTML = '<li>No pages analyzed</li>';
+          pageGroupRanges = [];
           return;
         }
 
@@ -438,11 +470,13 @@
           }
         });
 
+        pageGroupRanges = ranges;
+
         pageGroupsEl.innerHTML = ranges
           .map((range) => {
             const label = formatGroupLabel(range.label);
             const rangeText = range.start === range.end ? `Page ${range.start}` : `Pages ${range.start}-${range.end}`;
-            return `<li>${rangeText}: ${label}</li>`;
+            return `<li data-range-start="${range.start}" data-range-end="${range.end}">${rangeText}: ${label}</li>`;
           })
           .join('');
       }
@@ -509,6 +543,7 @@
         const details = analysis.pageDetails[pageNumber - 1];
         if (!details) return;
 
+        const normalizedGroupLabel = formatGroupLabel(details.groupLabel);
         const headerFlagged = headerOverridePages.has(pageNumber);
         const footerFlagged = footerOverridePages.has(pageNumber);
         const headerDetected = Boolean(details.headerLine);
@@ -541,24 +576,54 @@
           : `<p><strong>Estimated columns:</strong> ${columnCount}</p>`;
 
         pageDetailsEl.innerHTML = `
-          <p><strong>Classification:</strong> ${formatGroupLabel(details.groupLabel)}</p>
+          <p><strong>Classification:</strong> ${normalizedGroupLabel}</p>
           <div class="detail-row">
             <p><strong>Detected header:</strong> ${details.headerLine || 'Not detected'}${
               headerFlagged ? ' <em>(flagged as normal text)</em>' : ''
             }</p>
-            <label class="override-option">
-              <input type="checkbox" data-header-override ${headerDetected ? '' : 'disabled'} ${headerFlagged ? 'checked' : ''} />
-              Treat as normal text
-            </label>
+            <div class="override-set">
+              <label class="override-option">
+                <input type="checkbox" data-header-override ${headerDetected ? '' : 'disabled'} ${
+                  headerFlagged ? 'checked' : ''
+                } />
+                Treat as normal text
+              </label>
+              <label class="override-option">
+                <input type="checkbox" data-header-remember ${headerDetected ? '' : 'disabled'} ${
+                  headerRememberEnabled ? 'checked' : ''
+                } />
+                Remember for
+                <select data-header-scope ${
+                  headerDetected && headerRememberEnabled ? '' : 'disabled'
+                }>
+                  ${buildScopeOptions(headerRememberScope)}
+                </select>
+              </label>
+            </div>
           </div>
           <div class="detail-row">
             <p><strong>Detected footer:</strong> ${details.footerLine || 'Not detected'}${
               footerFlagged ? ' <em>(flagged as normal text)</em>' : ''
             }</p>
-            <label class="override-option">
-              <input type="checkbox" data-footer-override ${footerDetected ? '' : 'disabled'} ${footerFlagged ? 'checked' : ''} />
-              Treat as normal text
-            </label>
+            <div class="override-set">
+              <label class="override-option">
+                <input type="checkbox" data-footer-override ${footerDetected ? '' : 'disabled'} ${
+                  footerFlagged ? 'checked' : ''
+                } />
+                Treat as normal text
+              </label>
+              <label class="override-option">
+                <input type="checkbox" data-footer-remember ${footerDetected ? '' : 'disabled'} ${
+                  footerRememberEnabled ? 'checked' : ''
+                } />
+                Remember for
+                <select data-footer-scope ${
+                  footerDetected && footerRememberEnabled ? '' : 'disabled'
+                }>
+                  ${buildScopeOptions(footerRememberScope)}
+                </select>
+              </label>
+            </div>
           </div>
           ${columnControlsMarkup}
           <p><strong>Invisible text items:</strong> ${details.invisibleItems}</p>
@@ -566,32 +631,58 @@
           <p><strong>Index cues:</strong> ${details.indexEntryCount} line(s)</p>
         `;
 
-        attachDetailInteractions(pageNumber, details);
+        attachDetailInteractions(pageNumber, details, normalizedGroupLabel);
       }
 
-      function attachDetailInteractions(pageNumber, details) {
+      function attachDetailInteractions(pageNumber, details, normalizedGroupLabel) {
         const headerCheckbox = pageDetailsEl.querySelector('[data-header-override]');
         const footerCheckbox = pageDetailsEl.querySelector('[data-footer-override]');
+        const headerRememberToggle = pageDetailsEl.querySelector('[data-header-remember]');
+        const footerRememberToggle = pageDetailsEl.querySelector('[data-footer-remember]');
+        const headerScopeSelect = pageDetailsEl.querySelector('[data-header-scope]');
+        const footerScopeSelect = pageDetailsEl.querySelector('[data-footer-scope]');
         const columnInput = pageDetailsEl.querySelector('[data-column-input]');
         const columnPreviewBtn = pageDetailsEl.querySelector('[data-column-preview]');
         const columnClearBtn = pageDetailsEl.querySelector('[data-column-clear]');
 
         headerCheckbox?.addEventListener('change', () => {
-          if (headerCheckbox.checked) {
-            headerOverridePages.add(pageNumber);
-          } else {
-            headerOverridePages.delete(pageNumber);
-          }
-          renderPageDetails(pageNumber);
+          const scope = headerRememberToggle?.checked ? headerScopeSelect?.value || 'page' : 'page';
+          applyOverrideChange({
+            type: 'header',
+            pageNumber,
+            isChecked: headerCheckbox.checked,
+            scope,
+            groupLabel: normalizedGroupLabel,
+          });
         });
 
         footerCheckbox?.addEventListener('change', () => {
-          if (footerCheckbox.checked) {
-            footerOverridePages.add(pageNumber);
-          } else {
-            footerOverridePages.delete(pageNumber);
-          }
-          renderPageDetails(pageNumber);
+          const scope = footerRememberToggle?.checked ? footerScopeSelect?.value || 'page' : 'page';
+          applyOverrideChange({
+            type: 'footer',
+            pageNumber,
+            isChecked: footerCheckbox.checked,
+            scope,
+            groupLabel: normalizedGroupLabel,
+          });
+        });
+
+        headerRememberToggle?.addEventListener('change', () => {
+          headerRememberEnabled = headerRememberToggle.checked;
+          if (headerScopeSelect) headerScopeSelect.disabled = !headerRememberToggle.checked;
+        });
+
+        footerRememberToggle?.addEventListener('change', () => {
+          footerRememberEnabled = footerRememberToggle.checked;
+          if (footerScopeSelect) footerScopeSelect.disabled = !footerRememberToggle.checked;
+        });
+
+        headerScopeSelect?.addEventListener('change', () => {
+          headerRememberScope = headerScopeSelect.value;
+        });
+
+        footerScopeSelect?.addEventListener('change', () => {
+          footerRememberScope = footerScopeSelect.value;
         });
 
         columnPreviewBtn?.addEventListener('click', async () => {
@@ -609,6 +700,76 @@
           await renderPage(currentPage);
           renderPageDetails(pageNumber);
         });
+      }
+
+      function applyOverrideChange({ type, pageNumber, isChecked, scope, groupLabel }) {
+        const targetSet = type === 'header' ? headerOverridePages : footerOverridePages;
+        const targetPages = getPagesForScope(scope, pageNumber, groupLabel);
+        targetPages.forEach((page) => {
+          if (isChecked) {
+            targetSet.add(page);
+          } else {
+            targetSet.delete(page);
+          }
+        });
+
+        if (targetPages.length) {
+          highlightPageGroups(scope, targetPages);
+        }
+
+        renderPageDetails(pageNumber);
+      }
+
+      function getPagesForScope(scope, pageNumber, groupLabel) {
+        if (!analysis) return [pageNumber];
+        if (scope === 'document') {
+          return analysis.pageDetails.map((detail) => detail.pageNumber);
+        }
+        if (scope === 'group') {
+          return analysis.pageDetails
+            .filter((detail) => formatGroupLabel(detail.groupLabel) === groupLabel)
+            .map((detail) => detail.pageNumber);
+        }
+        return [pageNumber];
+      }
+
+      function highlightPageGroups(scope, pages = []) {
+        if (!pageGroupRanges.length) return;
+        const items = pageGroupsEl.querySelectorAll('li');
+        if (!items.length) return;
+        const duration = 2000;
+
+        if (scope === 'document') {
+          items.forEach((item) => {
+            item.classList.add('highlight');
+            setTimeout(() => item.classList.remove('highlight'), duration);
+          });
+          return;
+        }
+
+        if (!pages.length) return;
+        const indices = new Set();
+        pageGroupRanges.forEach((range, index) => {
+          const matches = pages.some((page) => page >= range.start && page <= range.end);
+          if (matches) {
+            indices.add(index);
+          }
+        });
+
+        items.forEach((item, index) => {
+          if (indices.has(index)) {
+            item.classList.add('highlight');
+            setTimeout(() => item.classList.remove('highlight'), duration);
+          }
+        });
+      }
+
+      function buildScopeOptions(selectedValue = 'page') {
+        return `
+          <option value="page" ${selectedValue === 'page' ? 'selected' : ''}>Only this page</option>
+          <option value="group" ${selectedValue === 'group' ? 'selected' : ''}>All pages in this group</option>
+          <option value="document" ${selectedValue === 'document' ? 'selected' : ''}>All pages in the document</option>
+        `;
       }
 
       function drawColumnOverlay(pageNumber) {
