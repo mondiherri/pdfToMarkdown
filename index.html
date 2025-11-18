@@ -603,7 +603,7 @@
         } catch (error) {
           return false;
         }
-      })();
+      });
 
       function readFromStorage(key, fallback = null) {
         if (!storageAvailable) return fallback;
