@@ -594,7 +594,7 @@
         loadingEl.textContent = message;
       }
 
-      const storageAvailable = (() => {
+      function storageAvailable(){
         try {
           const key = '__pdf_analyzer_test__';
           window.localStorage.setItem(key, '1');
@@ -603,10 +603,10 @@
         } catch (error) {
           return false;
         }
-      });
+      };
 
       function readFromStorage(key, fallback = null) {
-        if (!storageAvailable) return fallback;
+        if (!storageAvailable()) return fallback;
         try {
           const raw = window.localStorage.getItem(key);
           return raw ? JSON.parse(raw) : fallback;
