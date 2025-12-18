@@ -1534,7 +1534,7 @@
         }
         return 'Mainly Text';
       }
-
+      // Analyzes the pdf Structure to extract text and other statistics about the document.
       async function analyzeDocument(pdf) {
         const summary = {
           pageCount: pdf.numPages,
@@ -1550,8 +1550,10 @@
 
         for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
           setLoading(`Analyzing page ${pageNumber} of ${pdf.numPages}…`);
+          // Reads the page from the PDF
           const page = await pdf.getPage(pageNumber);
           const viewport = page.getViewport({ scale: 1 });
+          // Reads the text content from the PDF
           const textContent = await page.getTextContent({ normalizeWhitespace: true });
           const items = textContent.items
             .filter((item) => item.str && item.str.trim())
@@ -1609,7 +1611,8 @@
         summary.entities = extractEntities(summary.textContent);
         return summary;
       }
-
+      
+      // Evaluates one page of the document. EHE
       function evaluatePage(items, viewport, pageNumber) {
         const lines = buildLines(items);
         const pageWidth = viewport.width || 1;
