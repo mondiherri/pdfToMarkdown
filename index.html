@@ -1561,6 +1561,7 @@
               const width = item.width ?? Math.abs(item.transform[0]) ?? 0;
               const height = Math.abs(item.transform[3]) || Math.abs(item.transform[1]) || item.height || 0;
               const fontSize = height;
+              // objTransformed = PDFJS.Util.transform(viewPort.transform, objText.transform);  // Translate objText transform to correct ViewPort x, y coordinates.
               const rect = viewport.convertToViewportRectangle([
                 item.transform[4],
                 item.transform[5],
