@@ -6,14 +6,18 @@
     <title>PDF Structure Analyzer</title>
     <style>
       :root {
-        color-scheme: light dark;
         font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
         line-height: 1.5;
-        --panel-bg: color-mix(in srgb, canvas, canvastext 4%);
-        --border-color: color-mix(in srgb, canvastext, transparent 85%);
+        --shell: #b7494d;
+        --shell-dark: #9e3e43;
+        --bg: #f2f4f7;
+        --surface: #ffffff;
+        --muted: #5f6b7a;
+        --border: #d8dce3;
+        --shadow: 0 10px 30px rgba(34, 43, 58, 0.14);
         --accent: #1259ff;
       }
- 
+
       * {
         box-sizing: border-box;
       }
@@ -21,88 +25,414 @@
       body {
         margin: 0;
         min-height: 100vh;
-        background: canvas;
-        color: canvastext;
-        padding: 1.25rem 1.5rem;
+        background: var(--bg);
+        color: #1f2937;
       }
 
-      header,
-      footer {
-        max-width: 1200px;
-        margin: 0 auto 1rem;
+      .app-shell {
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
       }
 
-      header h1 {
-        margin-bottom: 0.25rem;
+      .titlebar {
+        background: linear-gradient(90deg, var(--shell) 0%, var(--shell-dark) 100%);
+        color: #fff;
+        padding: 0.65rem 1.6rem;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        box-shadow: inset 0 -1px rgba(255, 255, 255, 0.2);
+        gap: 1rem;
       }
 
-      main {
-        max-width: 1600px;
-        margin: 0 auto;
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+      }
+
+      .brand-mark {
+        width: 38px;
+        height: 32px;
+        border-radius: 8px;
+        background: #fff;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        color: var(--shell);
+        font-weight: 700;
+        box-shadow: 0 8px 18px rgba(0, 0, 0, 0.08);
+      }
+
+      .brand h1 {
+        margin: 0;
+        font-size: 1.15rem;
+        letter-spacing: 0.01em;
+      }
+
+      .brand p {
+        margin: 0;
+        color: rgba(255, 255, 255, 0.76);
+        font-size: 0.9rem;
+      }
+
+      .title-actions {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        flex-wrap: wrap;
+      }
+
+      .chip {
+        background: rgba(255, 255, 255, 0.12);
+        color: #fff;
+        padding: 0.25rem 0.75rem;
+        border-radius: 999px;
+        font-size: 0.9rem;
+        border: 1px solid rgba(255, 255, 255, 0.18);
+      }
+
+      .ribbon {
+        background: #ece7e9;
+        border-bottom: 1px solid #d5cfd2;
+        box-shadow: 0 6px 12px rgba(0, 0, 0, 0.06);
+      }
+
+      .tab-row {
+        display: flex;
+        gap: 0.35rem;
+        padding: 0.35rem 1rem 0.2rem;
+        align-items: center;
+      }
+
+      .tab-row button {
+        background: transparent;
+        border: none;
+        padding: 0.55rem 0.85rem;
+        border-radius: 8px 8px 0 0;
+        font-weight: 600;
+        color: #3c4653;
+        cursor: pointer;
+      }
+
+      .tab-row button.active {
+        background: #fff;
+        box-shadow: 0 -2px 0 #fff, 0 -2px 0 #fff, 0 3px 6px rgba(0, 0, 0, 0.08);
+        color: #a23c42;
+      }
+
+      .command-row {
+        background: #fff;
+        border-top: 1px solid #d5cfd2;
+        border-left: 1px solid #d5cfd2;
+        border-right: 1px solid #d5cfd2;
+        padding: 0.85rem 1rem 1rem;
         display: grid;
-        grid-template-columns: minmax(0, 1fr) minmax(320px, 420px);
-        gap: 1.25rem;
-        align-items: start;
-        justify-items: center;
+        grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+        gap: 1rem;
       }
 
-      .panels-column {
+      .command-group {
+        background: linear-gradient(180deg, #fafafb 0%, #f2f3f7 100%);
+        border: 1px solid #d8dce3;
+        border-radius: 12px;
+        padding: 0.75rem 0.85rem;
+        box-shadow: inset 0 1px 0 #fff, inset 0 -1px 0 rgba(255, 255, 255, 0.8);
+      }
+
+      .command-group .group-label {
+        margin: 0 0 0.55rem;
+        font-size: 0.9rem;
+        color: #4b5563;
+        letter-spacing: 0.01em;
+        display: flex;
+        align-items: center;
+        gap: 0.4rem;
+        text-transform: uppercase;
+      }
+
+      .command-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.45rem;
+        align-items: center;
+      }
+
+      .command-btn,
+      .command-actions button,
+      .command-actions label {
+        background: #fff;
+        border: 1px solid #d0d6de;
+        border-radius: 10px;
+        padding: 0.45rem 0.75rem;
+        font-weight: 600;
+        color: #374151;
+        cursor: pointer;
+        box-shadow: 0 4px 10px rgba(0, 0, 0, 0.04);
+        transition: transform 120ms ease, box-shadow 120ms ease;
+      }
+
+      .command-actions button:disabled,
+      .command-actions label:has(input:disabled) {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
+
+      .command-actions button:hover:not(:disabled),
+      .command-actions label:hover:not(:has(input:disabled)) {
+        transform: translateY(-1px);
+        box-shadow: 0 10px 18px rgba(0, 0, 0, 0.08);
+      }
+
+      .command-btn.primary,
+      .command-actions .primary {
+        background: linear-gradient(180deg, #b84c52 0%, #a8444a 100%);
+        border-color: #a8444a;
+        color: #fff;
+      }
+
+      .command-actions .ghost {
+        background: transparent;
+        border-style: dashed;
+        color: #6b7280;
+      }
+
+      .hidden-input {
+        position: absolute;
+        opacity: 0;
+        pointer-events: none;
+        width: 1px;
+        height: 1px;
+      }
+
+      .hint-inline {
+        color: #6b7280;
+        font-size: 0.9rem;
+      }
+
+      .workspace {
+        display: grid;
+        grid-template-columns: 70px minmax(0, 1.45fr) minmax(360px, 0.65fr);
+        flex: 1;
+        min-height: 0;
+      }
+
+      .tool-rail {
+        background: #f7f7f9;
+        border-right: 1px solid #d8dce3;
+        padding: 1rem 0.5rem;
+        display: flex;
+        flex-direction: column;
+        gap: 0.65rem;
+        align-items: center;
+      }
+
+      .tool-rail button {
+        width: 42px;
+        height: 42px;
+        border-radius: 10px;
+        border: 1px solid #d8dce3;
+        background: #fff;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        color: #4b5563;
+        cursor: pointer;
+        box-shadow: 0 4px 10px rgba(0, 0, 0, 0.05);
+      }
+
+      .tool-rail button.active {
+        background: #fff4f4;
+        border-color: #c7686d;
+        color: #a23c42;
+      }
+
+      .workspace-body {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr);
+        min-width: 0;
+        background: linear-gradient(180deg, #f5f6fa 0%, #eef1f5 100%);
+        padding: 1.25rem 1.25rem 1.5rem;
+      }
+
+      .stage {
         display: flex;
         flex-direction: column;
         gap: 0.85rem;
-        max-width: 420px;
-        width: 100%;
-        justify-self: end;
+      }
+
+      .stage-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 1rem;
+        flex-wrap: wrap;
+        padding: 0.35rem 0.25rem;
+      }
+
+      .eyebrow {
+        margin: 0;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        font-size: 0.78rem;
+        color: #6b7280;
+      }
+
+      .stage-header h2 {
+        margin: 0;
+        font-size: 1.3rem;
+      }
+
+      .pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.35rem;
+        background: #fff;
+        border: 1px solid #d8dce3;
+        border-radius: 999px;
+        padding: 0.35rem 0.8rem;
+        color: #374151;
+        font-weight: 600;
+        box-shadow: 0 6px 12px rgba(0, 0, 0, 0.06);
+      }
+
+      .pill.muted {
+        background: #f7f7f9;
+        color: #6b7280;
+      }
+
+      .preview-shell {
+        background: #e6e9ef;
+        border: 1px solid #d8dce3;
+        border-radius: 16px;
+        padding: 0.85rem;
+        box-shadow: inset 0 1px 0 #fff;
       }
 
       .panel {
-        background: var(--panel-bg);
-        border: 1px solid var(--border-color);
+        background: var(--surface);
+        border: 1px solid var(--border);
         border-radius: 14px;
         padding: 1rem;
-        box-shadow: 0 15px 30px color-mix(in srgb, black, transparent 90%);
+        box-shadow: var(--shadow);
       }
 
-      .panel + .panel {
-        margin-top: 0;
+      .preview-panel {
+        position: relative;
+        overflow: hidden;
+        height: calc(100vh - 240px);
+        min-height: 520px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: linear-gradient(180deg, #fdfdfd 0%, #f6f6f8 100%);
+      }
+
+      .preview-panel::before {
+        content: '';
+        position: absolute;
+        inset: 14px;
+        border: 1px dashed #d8dce3;
+        border-radius: 10px;
+        pointer-events: none;
+      }
+
+      .preview-panel h3 {
+        position: absolute;
+        top: 0.8rem;
+        left: 1rem;
+        margin: 0;
+        background: rgba(255, 255, 255, 0.9);
+        padding: 0.35rem 0.85rem;
+        border-radius: 999px;
+        box-shadow: 0 10px 20px rgba(0, 0, 0, 0.05);
+        border: 1px solid #e6e9ef;
+        font-size: 0.95rem;
+        letter-spacing: 0.01em;
+      }
+
+      .preview-panel .page-indicator {
+        position: absolute;
+        bottom: 0.9rem;
+        left: 1.1rem;
+        background: #fff;
+        border: 1px solid #d8dce3;
+        border-radius: 999px;
+        padding: 0.35rem 0.9rem;
+        font-weight: 700;
+        color: #374151;
+        box-shadow: 0 10px 20px rgba(0, 0, 0, 0.07);
+      }
+
+      .preview {
+        border: 1px solid #d8dce3;
+        border-radius: 12px;
+        background: #fff;
+        display: block;
+        width: auto;
+        max-width: min(100%, 1100px);
+        height: calc(100vh - 300px);
+        max-height: calc(100% - 70px);
+        box-shadow: 0 18px 42px rgba(0, 0, 0, 0.16);
+      }
+
+      .inspector {
+        border-left: 1px solid #d8dce3;
+        background: linear-gradient(180deg, #fafafb 0%, #f2f3f7 100%);
+        padding: 1rem 1.15rem;
+        overflow-y: auto;
+      }
+
+      .inspector-scroll {
+        display: flex;
+        flex-direction: column;
+        gap: 0.8rem;
+      }
+
+      .intro-card {
+        background: linear-gradient(135deg, rgba(183, 73, 78, 0.08), rgba(18, 89, 255, 0.05));
+        border: 1px solid #e0d5d7;
+        border-radius: 14px;
+        padding: 1rem;
+        box-shadow: 0 12px 28px rgba(0, 0, 0, 0.06);
+      }
+
+      .intro-card h1 {
+        margin: 0.15rem 0;
+      }
+
+      .intro-card p {
+        margin: 0.1rem 0 0.65rem;
+        color: var(--muted);
+      }
+
+      .status-chip {
+        display: inline-flex;
+        align-items: center;
+        background: #fff;
+        border: 1px solid #d8dce3;
+        border-radius: 10px;
+        padding: 0.45rem 0.65rem;
+        min-height: 38px;
+        min-width: 120px;
+        color: #374151;
+        box-shadow: 0 4px 10px rgba(0, 0, 0, 0.05);
       }
 
       .panel h2 {
-        margin-top: 0;
+        margin: 0 0 0.4rem;
       }
 
       input[type='file'] {
         display: block;
-        margin-bottom: 0.75rem;
-      }
-
-      .actions {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
-        gap: 0.4rem;
-        margin-bottom: 0.6rem;
-      }
-
-      .actions button {
-        background: var(--accent);
-        color: white;
-        border: none;
-        padding: 0.35rem 0.8rem;
-        border-radius: 10px;
-        cursor: pointer;
-        font-weight: 600;
-        font-size: 0.95rem;
-      }
-
-      .actions button:disabled {
-        opacity: 0.4;
-        cursor: not-allowed;
+        margin-bottom: 0.55rem;
       }
 
       .hint {
         margin-top: 0;
-        font-size: 0.9rem;
-        color: color-mix(in srgb, canvastext, transparent 35%);
+        font-size: 0.92rem;
+        color: var(--muted);
       }
 
       .summary p,
@@ -116,13 +446,14 @@
         margin: 0.5rem 0 0;
         max-height: 240px;
         overflow-y: auto;
-        border: 1px solid var(--border-color);
-        border-radius: 8px;
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        background: #f7f8fa;
       }
 
       .page-groups li {
-        padding: 0.4rem 0.6rem;
-        border-bottom: 1px solid var(--border-color);
+        padding: 0.55rem 0.75rem;
+        border-bottom: 1px solid var(--border);
         font-size: 0.95rem;
       }
 
@@ -130,135 +461,47 @@
         border-bottom: none;
       }
 
-      .settings-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-        gap: 0.6rem;
-        margin: 0.4rem 0 0.85rem;
-      }
-
-      .settings-grid label {
-        display: flex;
-        flex-direction: column;
-        font-size: 0.9rem;
-        gap: 0.35rem;
-      }
-
-      .settings-grid input {
-        padding: 0.3rem 0.45rem;
-        border: 1px solid var(--border-color);
-        border-radius: 6px;
-        font: inherit;
-        background: canvas;
-        color: inherit;
-      }
-
-      .settings-actions {
-        display: flex;
-        gap: 0.4rem;
-        flex-wrap: wrap;
-        align-items: center;
-      }
-
-      .settings-actions button {
-        background: var(--accent);
-        color: white;
-        border: none;
-        border-radius: 8px;
-        padding: 0.35rem 0.8rem;
-        cursor: pointer;
-        font-size: 0.95rem;
-      }
-
-      .settings-actions button.secondary {
-        background: transparent;
-        color: var(--accent);
-        border: 1px solid color-mix(in srgb, var(--accent), transparent 40%);
-      }
-
       .modified-panel {
-        margin-top: 1rem;
-        border: 1px solid var(--border-color);
+        margin-top: 0.65rem;
+        border: 1px dashed var(--border);
         border-radius: 10px;
         padding: 0.75rem;
-        background: color-mix(in srgb, var(--panel-bg), white 10%);
+        background: #f9fafc;
       }
 
       .modified-panel h3 {
         margin: 0 0 0.5rem;
       }
 
-      .modified-list p {
-        margin: 0;
-      }
-
-      .modified-list ul {
-        margin: 0.35rem 0 0.2rem 1.1rem;
-        padding: 0;
-      }
-
       .page-controls {
         display: flex;
         flex-wrap: wrap;
-        gap: 0.4rem;
+        gap: 0.5rem;
         align-items: center;
         margin-bottom: 0.65rem;
       }
 
       .page-controls input[type='number'] {
         width: 4.5rem;
-        padding: 0.25rem 0.35rem;
-        border: 1px solid var(--border-color);
-        border-radius: 6px;
+        padding: 0.35rem 0.45rem;
+        border: 1px solid var(--border);
+        border-radius: 8px;
         font: inherit;
+        background: #fff;
       }
 
       .page-controls button:enabled {
         background: var(--accent);
         color: white;
         border: none;
-        padding: 0.3rem 0.75rem;
-        border-radius: 8px;
+        padding: 0.35rem 0.8rem;
+        border-radius: 10px;
         cursor: pointer;
+        box-shadow: 0 8px 16px rgba(18, 89, 255, 0.15);
       }
 
       .page-controls button:disabled {
         opacity: 0.5;
-      }
-
-      .preview-panel {
-        width: min(100%, 1100px);
-        min-height: calc(100vh - 220px);
-        display: flex;
-        align-items: flex-start;
-        justify-content: center;
-        position: relative;
-        padding: 0.5rem;
-        overflow: hidden;
-      }
-
-      .preview-panel h2 {
-        position: absolute;
-        top: 0.85rem;
-        left: 1rem;
-        margin: 0;
-        background: color-mix(in srgb, var(--panel-bg), canvastext 5%);
-        padding: 0.35rem 0.85rem;
-        border-radius: 999px;
-        font-size: 0.95rem;
-        z-index: 2;
-      }
-
-      .preview {
-        border: 1px solid var(--border-color);
-        border-radius: 10px;
-        background: white;
-        display: block;
-        margin: 0 auto;
-        height: calc(100vh - 260px);
-        max-height: 90vh;
-        width: auto;
-        max-width: 100%;
       }
 
       .detail-row {
@@ -285,11 +528,57 @@
 
       .override-option select {
         font: inherit;
-        padding: 0.2rem 0.35rem;
-        border: 1px solid var(--border-color);
-        border-radius: 6px;
-        background: canvas;
+        padding: 0.28rem 0.45rem;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        background: #fff;
         color: inherit;
+      }
+
+      .settings-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+        gap: 0.7rem;
+        margin: 0.45rem 0 0.85rem;
+      }
+
+      .settings-grid label {
+        display: flex;
+        flex-direction: column;
+        font-size: 0.9rem;
+        gap: 0.35rem;
+      }
+
+      .settings-grid input {
+        padding: 0.35rem 0.45rem;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        font: inherit;
+        background: #fff;
+        color: inherit;
+      }
+
+      .settings-actions {
+        display: flex;
+        gap: 0.45rem;
+        flex-wrap: wrap;
+        align-items: center;
+      }
+
+      .settings-actions button {
+        background: var(--accent);
+        color: white;
+        border: none;
+        border-radius: 10px;
+        padding: 0.4rem 0.9rem;
+        cursor: pointer;
+        font-size: 0.96rem;
+      }
+
+      .settings-actions button.secondary {
+        background: transparent;
+        color: var(--accent);
+        border: 1px solid color-mix(in srgb, var(--accent), transparent 40%);
       }
 
       .column-line {
@@ -303,15 +592,15 @@
       .column-controls {
         display: flex;
         flex-wrap: wrap;
-        gap: 0.4rem;
+        gap: 0.45rem;
         align-items: center;
       }
 
       .column-controls input[type='number'] {
         width: 4rem;
-        padding: 0.25rem;
-        border: 1px solid var(--border-color);
-        border-radius: 6px;
+        padding: 0.28rem;
+        border: 1px solid var(--border);
+        border-radius: 8px;
         font: inherit;
       }
 
@@ -319,8 +608,8 @@
         background: var(--accent);
         color: white;
         border: none;
-        padding: 0.25rem 0.65rem;
-        border-radius: 6px;
+        padding: 0.3rem 0.7rem;
+        border-radius: 8px;
         cursor: pointer;
       }
 
@@ -332,7 +621,7 @@
       .column-preview-status {
         font-size: 0.9rem;
         margin: 0.2rem 0 0.5rem;
-        color: color-mix(in srgb, canvastext, transparent 25%);
+        color: var(--muted);
       }
 
       .overlay-toggle-group {
@@ -351,9 +640,9 @@
 
       .search-panel input[type='search'] {
         width: 100%;
-        padding: 0.4rem 0.55rem;
-        border: 1px solid var(--border-color);
-        border-radius: 999px;
+        padding: 0.45rem 0.55rem;
+        border: 1px solid var(--border);
+        border-radius: 10px;
         font: inherit;
       }
 
@@ -361,10 +650,11 @@
         margin-top: 0.75rem;
         max-height: 240px;
         overflow-y: auto;
-        border: 1px solid var(--border-color);
+        border: 1px solid var(--border);
         border-radius: 10px;
         padding: 0.65rem;
         font-size: 0.9rem;
+        background: #f9fafc;
       }
 
       .search-result {
@@ -376,7 +666,7 @@
       }
 
       .search-snippet {
-        color: color-mix(in srgb, canvastext, transparent 20%);
+        color: var(--muted);
       }
 
       .entity-chips {
@@ -400,128 +690,209 @@
         font-style: italic;
       }
 
-      @media (max-width: 720px) {
-        body {
-          padding: 1rem;
+      footer {
+        padding: 1rem 1.5rem 2rem;
+        color: #6b7280;
+      }
+
+      footer a {
+        color: #0f47c9;
+        font-weight: 600;
+      }
+
+      @media (max-width: 1040px) {
+        .workspace {
+          grid-template-columns: 70px 1fr;
         }
 
-        main {
+        .inspector {
+          grid-column: span 2;
+          border-left: none;
+        }
+      }
+
+      @media (max-width: 720px) {
+        .command-row {
           grid-template-columns: 1fr;
         }
 
+        .workspace {
+          grid-template-columns: 1fr;
+        }
+
+        .tool-rail {
+          display: none;
+        }
+
         .preview-panel {
-          width: 100%;
-          height: auto;
+          height: 480px;
         }
       }
     </style>
   </head>
   <body>
-    <header>
-      <h1>PDF Structure Analyzer</h1>
-      <p>
-        Upload a legal PDF to inspect its pagination, detect table of contents or index pages,
-        and examine headers, footers, column counts, and invisible text on any page.
-      </p>
-    </header>
-
-    <main>
-      <section class="panel preview-panel" id="previewPanel">
-        <h3>Live Preview</h3>
-        <canvas id="pageCanvas" class="preview" aria-label="PDF page preview"></canvas>
-      </section>
-      
-      <div class="panels-column">
-        <section class="panel">
-          <h2>1. Upload PDF</h2>
-          <input type="file" id="pdfInput" accept="application/pdf" />
-          <p class="hint">
-            All analysis runs locally in your browser using Mozilla's pdf.js library; the document never leaves your device.
-          </p>
-          <div class="actions" aria-label="Document actions">
-            <button id="analyzeBtn" disabled>Analyze</button>
-            <button id="previewBtn" disabled>Preview</button>
-            <button id="extractBtn" disabled>Extract</button>
-            <button id="markdownBtn" disabled>Download Markdown</button>
-            <button id="jsonBtn" disabled>Download JSON</button>
-            <button id="csvBtn" disabled>Download CSV</button>
-          </div>
-          <div id="loading" aria-live="polite"></div>
-        </section>
-
-        <section class="panel">
-          <h2>2. Document Overview</h2>
-          <div id="summary" class="summary">Load a document to view its metadata.</div>
+    <div class="app-shell">
+      <header class="titlebar">
+        <div class="brand">
+          <div class="brand-mark">PDF</div>
           <div>
-            <h3>Page groups</h3>
-            <ul id="pageGroups" class="page-groups"></ul>
+            <p>OnlyOffice-inspired workspace</p>
+            <h1>PDF Structure Analyzer</h1>
           </div>
-          <div class="modified-panel">
-            <h3>Modified pages</h3>
-            <div id="overrideSummary" class="modified-list">
-              <p>No header/footer overrides applied yet.</p>
+        </div>
+        <div class="title-actions">
+          <span class="chip">Local document lab</span>
+          <span class="chip">Live preview</span>
+        </div>
+      </header>
+
+      <div class="ribbon">
+        <div class="tab-row">
+          <button class="active" type="button">Home</button>
+          <button type="button">Insert</button>
+          <button type="button">View</button>
+          <button type="button">Plugins</button>
+        </div>
+        <div class="command-row">
+          <div class="command-group">
+            <p class="group-label">Insert</p>
+            <div class="command-actions">
+              <label class="command-btn primary" for="pdfInput">
+                <input id="pdfInput" class="hidden-input" type="file" accept="application/pdf" />
+                Upload PDF
+              </label>
+              <span class="hint-inline">The file never leaves your browser.</span>
             </div>
           </div>
-        </section>
-
-        <section class="panel settings-panel">
-          <h2>3. Analysis Settings</h2>
-          <p class="hint">Tune heuristics before or after running analysis. Settings persist in this browser.</p>
-          <div class="settings-grid">
-            <label>
-              TOC cue threshold (%)
-              <input type="number" min="5" max="95" step="5" id="tocThreshold" />
-            </label>
-            <label>
-              Index cue minimum (lines)
-              <input type="number" min="1" max="20" step="1" id="indexMinimum" />
-            </label>
-            <label>
-              Invisible text width threshold
-              <input type="number" min="0.01" max="1" step="0.01" id="invisibleThreshold" />
-            </label>
+          <div class="command-group">
+            <p class="group-label">Workflow</p>
+            <div class="command-actions">
+              <button id="analyzeBtn" class="primary" disabled>Analyze</button>
+              <button id="previewBtn" class="ghost" disabled>Preview</button>
+              <button id="extractBtn" class="ghost" disabled>Extract</button>
+            </div>
           </div>
-          <div class="settings-actions">
-            <button type="button" id="applySettings">Apply settings</button>
-            <button type="button" class="secondary" id="resetSettings">Reset defaults</button>
+          <div class="command-group">
+            <p class="group-label">Exports</p>
+            <div class="command-actions">
+              <button id="markdownBtn" disabled>Markdown</button>
+              <button id="jsonBtn" disabled>JSON</button>
+              <button id="csvBtn" disabled>CSV</button>
+            </div>
           </div>
-        </section>
-
-        <section class="panel">
-          <h2>4. Page Details</h2>
-          <div class="page-controls">
-            <label for="pageSelect">Jump to page:</label>
-            <input id="pageSelect" type="number" min="1" disabled />
-            <button id="prevPage" disabled>Previous page</button>
-            <button id="nextPage" disabled>Next page</button>
-            <span id="pageIndicator"></span>
-          </div>
-          <div id="pageDetails" class="details">Select a page to inspect its structure.</div>
-        </section>
-
-        <section class="panel search-panel">
-          <h2>5. Search & Entities</h2>
-          <input type="search" id="searchInput" placeholder="Search text across the document" disabled />
-          <div id="searchResults" class="search-results">
-            <p>Load a document to enable search.</p>
-          </div>
-          <div>
-            <h3>Detected entities</h3>
-            <div id="entityList" class="entity-chips"></div>
-          </div>
-        </section>
-
+        </div>
       </div>
 
-      
-    </main>
+      <div class="workspace">
+        <aside class="tool-rail" aria-label="Preview tools">
+          <button class="active" aria-label="Select tool">□</button>
+          <button aria-label="Hand tool">✋</button>
+          <button aria-label="Text box">T</button>
+          <button aria-label="Shapes">⬚</button>
+          <button aria-label="Image">🖼</button>
+          <button aria-label="More">⋯</button>
+        </aside>
 
-    <footer>
-      <p>
-        Built with <a href="https://mozilla.github.io/pdf.js/" target="_blank" rel="noreferrer">pdf.js</a> to
-        accelerate legal-document ingestion for knowledge bases.
-      </p>
-    </footer>
+        <div class="workspace-body">
+          <div class="stage">
+            <div class="stage-header">
+              <div>
+                <p class="eyebrow">Preview</p>
+                <h2>Document canvas</h2>
+              </div>
+              <div class="stage-metadata">
+                <span class="pill page-indicator" id="pageIndicator">Page —</span>
+              </div>
+            </div>
+            <div class="preview-shell">
+              <section class="panel preview-panel" id="previewPanel">
+                <h3>Live Preview</h3>
+                <canvas id="pageCanvas" class="preview" aria-label="PDF page preview"></canvas>
+              </section>
+            </div>
+          </div>
+        </div>
+
+        <aside class="inspector" aria-label="Command panels">
+          <div class="inspector-scroll">
+            <div class="intro-card">
+              <p class="eyebrow">Structure analyzer</p>
+              <h1>Inspect every page</h1>
+              <p>Trace headers, footers, columns, and invisible text as if you were editing the PDF in a desktop suite.</p>
+              <div id="loading" class="status-chip" aria-live="polite">Status: idle</div>
+            </div>
+
+            <section class="panel">
+              <h2>Document Overview</h2>
+              <div id="summary" class="summary">Load a document to view its metadata.</div>
+              <div>
+                <h3>Page groups</h3>
+                <ul id="pageGroups" class="page-groups"></ul>
+              </div>
+              <div class="modified-panel">
+                <h3>Modified pages</h3>
+                <div id="overrideSummary" class="modified-list">
+                  <p>No header/footer overrides applied yet.</p>
+                </div>
+              </div>
+            </section>
+
+            <section class="panel settings-panel">
+              <h2>Analysis Settings</h2>
+              <p class="hint">Tune heuristics before or after running analysis. Settings persist in this browser.</p>
+              <div class="settings-grid">
+                <label>
+                  TOC cue threshold (%)
+                  <input type="number" min="5" max="95" step="5" id="tocThreshold" />
+                </label>
+                <label>
+                  Index cue minimum (lines)
+                  <input type="number" min="1" max="20" step="1" id="indexMinimum" />
+                </label>
+                <label>
+                  Invisible text width threshold
+                  <input type="number" min="0.01" max="1" step="0.01" id="invisibleThreshold" />
+                </label>
+              </div>
+              <div class="settings-actions">
+                <button type="button" id="applySettings">Apply settings</button>
+                <button type="button" class="secondary" id="resetSettings">Reset defaults</button>
+              </div>
+            </section>
+
+            <section class="panel">
+              <h2>Page Details</h2>
+              <div class="page-controls">
+                <label for="pageSelect">Jump to page:</label>
+                <input id="pageSelect" type="number" min="1" disabled />
+                <button id="prevPage" disabled>Previous</button>
+                <button id="nextPage" disabled>Next</button>
+              </div>
+              <div id="pageDetails" class="details">Select a page to inspect its structure.</div>
+            </section>
+
+            <section class="panel search-panel">
+              <h2>Search &amp; Entities</h2>
+              <input type="search" id="searchInput" placeholder="Search text across the document" disabled />
+              <div id="searchResults" class="search-results">
+                <p>Load a document to enable search.</p>
+              </div>
+              <div>
+                <h3>Detected entities</h3>
+                <div id="entityList" class="entity-chips"></div>
+              </div>
+            </section>
+          </div>
+        </aside>
+      </div>
+
+      <footer>
+        <p>
+          Built with <a href="https://mozilla.github.io/pdf.js/" target="_blank" rel="noreferrer">pdf.js</a> to
+          accelerate legal-document ingestion for knowledge bases.
+        </p>
+      </footer>
+    </div>
 
     <script type="module" src="./src/app.js"></script>
   </body>
