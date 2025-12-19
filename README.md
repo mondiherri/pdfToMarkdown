@@ -1,7 +1,7 @@
 # PDF Structure Analyzer
 
-A single-page web application that uses [Mozilla pdf.js](https://mozilla.github.io/pdf.js/) inside the browser to
-inspect legal PDFs before they are ingested into an LLM knowledge base. The page never uploads your files to a server:
+A learning project for single-page web application that uses [Mozilla pdf.js](https://mozilla.github.io/pdf.js/) inside the browser to
+inspect PDFs before they are ingested by an LLM. The page never uploads your files to a server:
 all parsing, heuristics, and rendering run on the client.
 
 ## Features
