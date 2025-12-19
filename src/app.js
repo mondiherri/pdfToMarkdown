@@ -708,11 +708,19 @@ import * as pdfjsLib from 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168
 
       async function resolveImageFromArgs(args = [], page) {
         const [firstArg] = args || [];
+        if (Array.isArray(firstArg)) {
+          // paintInlineImageXObjectGroup passes an array of inline images
+          for (const candidate of firstArg) {
+            // eslint-disable-next-line no-await-in-loop
+            const inlineImage = await convertInlineImage(candidate);
+            if (inlineImage) return inlineImage;
+          }
+        }
         if (firstArg?.data && firstArg?.width && firstArg?.height) {
           return convertInlineImage(firstArg);
         }
         if (typeof firstArg === 'string') {
-          return readImageFromStore(page?.objs, firstArg);
+          return readImageFromPageStores(page, firstArg);
         }
         return null;
       }
@@ -729,22 +737,53 @@ import * as pdfjsLib from 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168
         return { dataUrl: canvas.toDataURL('image/png'), width, height };
       }
 
+      async function readImageFromPageStores(page, name) {
+        if (!page || !name) return null;
+        const stores = [page.objs, page.commonObjs];
+        for (const store of stores) {
+          // eslint-disable-next-line no-await-in-loop
+          const resolved = await readImageFromStore(store, name);
+          if (resolved) return resolved;
+        }
+        return null;
+      }
+
       async function readImageFromStore(store, name) {
         if (!store || !name) return null;
+        const convertIfPossible = async (value) => {
+          try {
+            return await convertImageLike(value);
+          } catch (error) {
+            return null;
+          }
+        };
+
         try {
-          const direct = store.get(name);
-          const converted = await convertImageLike(direct);
-          if (converted) return converted;
+          const direct = await convertIfPossible(store.get(name));
+          if (direct) return direct;
         } catch (error) {
           // Object may not be ready yet; fall back to async getter.
         }
-        return new Promise((resolve) => {
+        try {
+          const resolved = await promisifiedPDFGetObject(store, name);
+          return await convertIfPossible(resolved);
+        } catch (error) {
+          return null;
+        }
+      }
+
+      async function promisifiedPDFGetObject(store, index) {
+        return new Promise((resolve, reject) => {
           try {
-            store.get(name, async (image) => {
-              resolve(await convertImageLike(image));
+            store.get(index, (resolved) => {
+              if (resolved) {
+                resolve(resolved);
+              } else {
+                reject(new Error('Error getting object'));
+              }
             });
           } catch (error) {
-            resolve(null);
+            reject(error);
           }
         });
       }
