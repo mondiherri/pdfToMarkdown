@@ -20,6 +20,7 @@ import * as pdfjsLib from 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168
       const extractImagesButton = document.getElementById('extractImagesBtn');
       const imageToolButton = document.getElementById('imageTool');
       const shapesToolButton = document.getElementById('shapesTool');
+      const textButton = document.getElementById('textBtn');
       const markdownButton = document.getElementById('markdownBtn');
       const jsonButton = document.getElementById('jsonBtn');
       const csvButton = document.getElementById('csvBtn');
@@ -89,8 +90,11 @@ import * as pdfjsLib from 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168
       pageSelectEl.addEventListener('change', handlePageInput);
       analyzeButton.addEventListener('click', () => runAnalysis());
       previewButton.addEventListener('click', focusPreviewPanel);
-      extractButton.addEventListener('click', exportAnalysisReport);
+      extractButton.addEventListener('click', exportPlainTextDocument);
       extractImagesButton.addEventListener('click', handleExtractImages);
+      if (textButton) {
+        textButton.addEventListener('click', exportPlainTextDocument);
+      }
       markdownButton.addEventListener('click', exportMarkdownDocument);
       jsonButton.addEventListener('click', exportJsonAnalysis);
       csvButton.addEventListener('click', exportCsvSummary);
@@ -853,6 +857,7 @@ import * as pdfjsLib from 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168
         previewButton.disabled = true;
         extractButton.disabled = true;
         if (extractImagesButton) extractImagesButton.disabled = true;
+        if (textButton) textButton.disabled = true;
         markdownButton.disabled = true;
         jsonButton.disabled = true;
         csvButton.disabled = true;
@@ -888,6 +893,7 @@ import * as pdfjsLib from 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168
         previewButton.disabled = true;
         extractButton.disabled = true;
         if (extractImagesButton) extractImagesButton.disabled = true;
+        if (textButton) textButton.disabled = true;
         markdownButton.disabled = true;
         headerOverridePages.clear();
         footerOverridePages.clear();
@@ -922,6 +928,7 @@ import * as pdfjsLib from 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168
         extractedImages = [];
         clearImageGrid();
         if (extractImagesButton) extractImagesButton.disabled = false;
+        if (textButton) textButton.disabled = false;
         markdownButton.disabled = false;
         jsonButton.disabled = false;
         csvButton.disabled = false;
@@ -2009,14 +2016,18 @@ import * as pdfjsLib from 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168
         return 0;
       }
 
-      function exportAnalysisReport() {
-        if (!analysis) return;
-        const markdown = buildMarkdownReport(analysis);
-        const blob = new Blob([markdown], { type: 'text/markdown' });
+      function exportPlainTextDocument() {
+        if (!analysis?.textContent?.length) return;
+        const text = buildPlainTextDocument({
+          pages: analysis.textContent,
+          headerOverrides: headerOverridePages,
+          footerOverrides: footerOverridePages,
+        });
+        const blob = new Blob([text], { type: 'text/plain' });
         const url = URL.createObjectURL(blob);
         const link = document.createElement('a');
         link.href = url;
-        link.download = `${pdfFileName || 'pdf-analysis'}-structure.md`;
+        link.download = `${pdfFileName || 'pdf-analysis'}-text.txt`;
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
@@ -2136,6 +2147,44 @@ import * as pdfjsLib from 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168
         });
 
         return markdown;
+      }
+
+      function buildPlainTextDocument({ pages = [], headerOverrides, footerOverrides } = {}) {
+        const headerSet = headerOverrides instanceof Set ? headerOverrides : new Set(headerOverrides);
+        const footerSet = footerOverrides instanceof Set ? footerOverrides : new Set(footerOverrides);
+        const blocks = [];
+        let paragraphBuffer = '';
+
+        function flushParagraph() {
+          const cleaned = paragraphBuffer.trim();
+          if (cleaned) {
+            blocks.push(cleaned);
+          }
+          paragraphBuffer = '';
+        }
+
+        pages.forEach((page) => {
+          const allowHeader = headerSet.has(page.pageNumber);
+          const allowFooter = footerSet.has(page.pageNumber);
+          (page.lines || []).forEach((line) => {
+            const blockType = line.blockType || 'body';
+            if (!allowHeader && blockType === 'header') return;
+            if (!allowFooter && blockType === 'footer') return;
+
+            const text = (line.text || '').replace(/\s+/g, ' ').trim();
+            if (!text) return;
+
+            if (line.headingLevel > 0) {
+              flushParagraph();
+              blocks.push(text);
+            } else {
+              paragraphBuffer = appendParagraphLine(paragraphBuffer, text);
+            }
+          });
+          flushParagraph();
+        });
+
+        return blocks.join('\n\n');
       }
 
       function buildReadingOrderMarkdown({ pages = [], title = 'PDF Markdown Export', headerOverrides, footerOverrides } = {}) {
