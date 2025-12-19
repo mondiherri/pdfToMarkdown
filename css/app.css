@@ -224,7 +224,7 @@ body {
 .tool-rail button {
   width: 42px;
   height: 42px;
-  border-radius: 10px;
+  border-radius: 1px;
   border: 1px solid #d8dce3;
   background: #fff;
   display: inline-flex;
@@ -314,7 +314,6 @@ body {
 .preview-panel {
   position: relative;
   overflow: hidden;
-  height: calc(100vh - 240px);
   min-height: 520px;
   display: flex;
   align-items: center;
