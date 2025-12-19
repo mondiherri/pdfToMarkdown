@@ -77,11 +77,17 @@
                 <p class="eyebrow">Preview</p>
                 <h2>Document canvas</h2>
               </div>
-              <div class="stage-metadata">
-                <span class="pill page-indicator" id="pageIndicator">Page —</span>
-              </div>
             </div>
             <div class="preview-shell">
+              <div class="preview-toolbar">
+                <div class="page-controls">
+                  <button id="prevPage" disabled>Previous</button>
+                  <label for="pageSelect">Jump to page:</label>
+                  <input id="pageSelect" type="number" min="1" disabled />
+                  <button id="nextPage" disabled>Next</button>
+                </div>
+                <span class="pill page-indicator" id="pageIndicator">Page —</span>
+              </div>
               <section class="panel preview-panel" id="previewPanel">
                 <h3>Live Preview</h3>
                 <canvas id="pageCanvas" class="preview" aria-label="PDF page preview"></canvas>
@@ -140,12 +146,6 @@
 
             <section class="panel">
               <h2>Page Details</h2>
-              <div class="page-controls">
-                <label for="pageSelect">Jump to page:</label>
-                <input id="pageSelect" type="number" min="1" disabled />
-                <button id="prevPage" disabled>Previous</button>
-                <button id="nextPage" disabled>Next</button>
-              </div>
               <div id="pageDetails" class="details">Select a page to inspect its structure.</div>
             </section>
 
