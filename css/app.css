@@ -781,6 +781,23 @@ footer a {
   border-color: color-mix(in srgb, var(--accent), transparent 70%);
 }
 
+.category-highlight {
+  position: absolute;
+  border: 2px solid transparent;
+  border-radius: 6px;
+  mix-blend-mode: multiply;
+  pointer-events: none;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.18);
+}
+
+.category-title { background: rgba(18, 89, 255, 0.12); border-color: rgba(18, 89, 255, 0.6); }
+.category-paragraph { background: rgba(46, 204, 113, 0.12); border-color: rgba(46, 204, 113, 0.6); }
+.category-header { background: rgba(255, 159, 67, 0.14); border-color: rgba(255, 159, 67, 0.75); }
+.category-footer { background: rgba(108, 92, 231, 0.14); border-color: rgba(108, 92, 231, 0.65); }
+.category-column { background: rgba(0, 184, 148, 0.14); border-color: rgba(0, 184, 148, 0.65); }
+.category-image { background: rgba(255, 165, 0, 0.18); border-color: rgba(255, 165, 0, 0.9); }
+.category-descriptor { background: rgba(214, 48, 49, 0.12); border-color: rgba(214, 48, 49, 0.65); }
+
 .image-highlight {
   position: absolute;
   border: 2px solid rgba(255, 165, 0, 0.9);

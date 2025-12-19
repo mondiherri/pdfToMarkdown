@@ -19,6 +19,7 @@ import * as pdfjsLib from 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168
       const extractButton = document.getElementById('extractBtn');
       const extractImagesButton = document.getElementById('extractImagesBtn');
       const imageToolButton = document.getElementById('imageTool');
+      const shapesToolButton = document.getElementById('shapesTool');
       const markdownButton = document.getElementById('markdownBtn');
       const jsonButton = document.getElementById('jsonBtn');
       const csvButton = document.getElementById('csvBtn');
@@ -46,6 +47,7 @@ import * as pdfjsLib from 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168
       let docExtractionStruct = [];
       let activeTool = 'select';
       let showImageHighlights = false;
+      let showCategoryHighlights = false;
       const selectionBox = document.createElement('div');
       selectionBox.className = 'selection-box';
       selectionBox.style.display = 'none';
@@ -105,6 +107,13 @@ import * as pdfjsLib from 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168
           showImageHighlights = !showImageHighlights;
           imageToolButton.classList.toggle('active', showImageHighlights);
           renderImageHighlights(currentPage);
+        });
+      }
+      if (shapesToolButton) {
+        shapesToolButton.addEventListener('click', () => {
+          showCategoryHighlights = !showCategoryHighlights;
+          shapesToolButton.classList.toggle('active', showCategoryHighlights);
+          renderCategoryHighlights(currentPage);
         });
       }
       setupSelectionHandlers();
@@ -301,6 +310,15 @@ import * as pdfjsLib from 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168
       }
 
       const EXTRACTION_CATEGORIES = ['Title', 'Paragraph', 'Header', 'Footer', 'Column', 'Descriptor'];
+      const CATEGORY_COLORS = {
+        Title: 'category-title',
+        Paragraph: 'category-paragraph',
+        Header: 'category-header',
+        Footer: 'category-footer',
+        Column: 'category-column',
+        Image: 'category-image',
+        Descriptor: 'category-descriptor',
+      };
 
       function setActiveTool(tool) {
         activeTool = tool;
@@ -467,47 +485,8 @@ import * as pdfjsLib from 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168
           recordedAt: new Date().toISOString(),
         });
         setLoading(`Saved ${category} region on page ${currentPage}.`);
+        renderCategoryHighlights(currentPage);
       }
-
-      function captureImageRectsDuringRender(pageNumber) {
-        const detected = [];
-        const originalDrawImage = ctx.drawImage.bind(ctx);
-        ctx.drawImage = function interceptedDrawImage(image, ...args) {
-          try {
-            const rect = deriveDrawImageRect(args);
-            const transform = ctx.getTransform();
-            const quad = buildTransformedQuad(transform, rect);
-            const bounds = quadToBounds(quad);
-            if (bounds.width > 0 && bounds.height > 0) {
-              const normalized = {
-                x: clampNumber(bounds.x / canvas.width, 0, 1),
-                y: clampNumber(bounds.y / canvas.height, 0, 1),
-                width: clampNumber(bounds.width / canvas.width, 0, 1),
-                height: clampNumber(bounds.height / canvas.height, 0, 1),
-              };
-              detected.push(normalized);
-            }
-          } catch (error) {
-            console.warn('Failed to record image bounds', error);
-          }
-          return originalDrawImage(image, ...args);
-        };
-        currentRenderTask = page.render({ canvasContext: ctx, viewport, transform });
-        return (async () => {
-          try {
-            await currentRenderTask.promise;
-          } finally {
-            ctx.drawImage = originalDrawImage;
-            currentRenderTask = null;
-          }
-          const unique = dedupeRects(detected);
-          return unique.map((rect) => ({
-            ...rect,
-            pageNumber,
-          }));
-        })();
-      }
-
       function deriveDrawImageRect(args = []) {
         const [, x = 0, y = 0, w = 0, h = 0] = args;
         const width = args.length >= 5 ? w : 0;
@@ -578,6 +557,52 @@ import * as pdfjsLib from 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168
           highlight.style.width = `${width}px`;
           highlight.style.height = `${height}px`;
           selectionLayer.appendChild(highlight);
+        });
+      }
+
+      function normalizeRect(entry) {
+        if (!entry) return null;
+        if (entry.normalizedRect) return entry.normalizedRect;
+        const pdfRect = entry.pdfRect;
+        if (!pdfRect?.pageWidth || !pdfRect?.pageHeight) return null;
+        return {
+          x: clampNumber((pdfRect.x || 0) / pdfRect.pageWidth, 0, 1),
+          y: clampNumber((pdfRect.y || 0) / pdfRect.pageHeight, 0, 1),
+          width: clampNumber((pdfRect.width || 0) / pdfRect.pageWidth, 0, 1),
+          height: clampNumber((pdfRect.height || 0) / pdfRect.pageHeight, 0, 1),
+        };
+      }
+
+      function renderCategoryHighlights(pageNumber) {
+        if (!selectionLayer) return;
+        selectionLayer.querySelectorAll('.category-highlight').forEach((node) => node.remove());
+        if (!showCategoryHighlights) return;
+        const canvasRect = canvas.getBoundingClientRect();
+        const layerRect = selectionLayer.getBoundingClientRect();
+        const offsetLeft = canvasRect.left - layerRect.left;
+        const offsetTop = canvasRect.top - layerRect.top;
+        const entries = (docExtractionStruct || []).filter((entry) => entry.pageNumber === pageNumber);
+        const rects = [];
+        entries.forEach((entry) => {
+          const normalized = normalizeRect(entry);
+          if (!normalized) return;
+          rects.push({ category: entry.category || 'Descriptor', rect: normalized });
+        });
+        const imageRects = pageImageRects.get(pageNumber) || [];
+        imageRects.forEach((rect) => rects.push({ category: 'Image', rect }));
+        rects.forEach((item) => {
+          const colorClass = CATEGORY_COLORS[item.category] || 'category-paragraph';
+          const overlay = document.createElement('div');
+          overlay.className = `category-highlight ${colorClass}`;
+          const left = (item.rect.x || 0) * canvasRect.width + offsetLeft;
+          const top = (item.rect.y || 0) * canvasRect.height + offsetTop;
+          const width = (item.rect.width || 0) * canvasRect.width;
+          const height = (item.rect.height || 0) * canvasRect.height;
+          overlay.style.left = `${left}px`;
+          overlay.style.top = `${top}px`;
+          overlay.style.width = `${width}px`;
+          overlay.style.height = `${height}px`;
+          selectionLayer.appendChild(overlay);
         });
       }
 
@@ -841,9 +866,15 @@ import * as pdfjsLib from 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168
         extractedImages = [];
         docExtractionStruct = [];
         pageImageRects.clear();
+        showImageHighlights = false;
+        showCategoryHighlights = false;
+        imageToolButton?.classList.remove('active');
+        shapesToolButton?.classList.remove('active');
         clearImageGrid();
         selectionBox.style.display = 'none';
         hideSelectionMenu();
+        renderCategoryHighlights(currentPage);
+        renderImageHighlights(currentPage);
         setLoading('');
       }
 
@@ -866,6 +897,10 @@ import * as pdfjsLib from 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168
         invisibleTextOverlayPages.clear();
         docExtractionStruct = [];
         pageImageRects.clear();
+        showImageHighlights = false;
+        showCategoryHighlights = false;
+        imageToolButton?.classList.remove('active');
+        shapesToolButton?.classList.remove('active');
         selectionBox.style.display = 'none';
         hideSelectionMenu();
 
@@ -995,6 +1030,8 @@ import * as pdfjsLib from 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168
         await renderPage(pageNumber);
         prevButton.disabled = pageNumber === 1;
         nextButton.disabled = pageNumber === pdfDoc.numPages;
+        renderCategoryHighlights(pageNumber);
+        renderImageHighlights(pageNumber);
       }
 
       function focusPreviewPanel() {
@@ -1041,27 +1078,50 @@ import * as pdfjsLib from 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168
           transform,
         };
 
+        const detectedImageRects = [];
+        const originalDrawImage = ctx.drawImage.bind(ctx);
+        ctx.drawImage = function instrumentedDrawImage(image, ...args) {
+          try {
+            const rect = deriveDrawImageRect(args);
+            const transformMatrix = ctx.getTransform();
+            const quad = buildTransformedQuad(transformMatrix, rect);
+            const bounds = quadToBounds(quad);
+            if (bounds.width > 0 && bounds.height > 0) {
+              const normalized = {
+                x: clampNumber(bounds.x / canvas.width, 0, 1),
+                y: clampNumber(bounds.y / canvas.height, 0, 1),
+                width: clampNumber(bounds.width / canvas.width, 0, 1),
+                height: clampNumber(bounds.height / canvas.height, 0, 1),
+              };
+              detectedImageRects.push(normalized);
+            }
+          } catch (error) {
+            console.warn('Failed to record image bounds', error);
+          }
+          return originalDrawImage(image, ...args);
+        };
+
         currentRenderTask = page.render(renderContext);
         try {
           await currentRenderTask.promise;
         } finally {
-        currentRenderTask = null;
-      }
-        const detectedImageRects = captureImageRectsDuringRender(pageNumber);
-        if (detectedImageRects) {
-          pageImageRects.set(pageNumber, detectedImageRects);
+          ctx.drawImage = originalDrawImage;
+          currentRenderTask = null;
         }
+        pageImageRects.set(pageNumber, dedupeRects(detectedImageRects));
         drawColumnOverlay(pageNumber);
         drawTextAreasOverlay(pageNumber);
         drawHeaderFooterOverlay(pageNumber);
         drawInvisibleOverlay(pageNumber);
         renderImageHighlights(pageNumber);
+        renderCategoryHighlights(pageNumber);
       }
 
       function handleResize() {
         if (!pdfDoc) return;
         renderPage(currentPage).catch((err) => console.error('Resize render failed', err));
         renderImageHighlights(currentPage);
+        renderCategoryHighlights(currentPage);
       }
 
       function renderPageDetails(pageNumber) {
