@@ -46,6 +46,7 @@
               <button id="analyzeBtn" class="primary" disabled>Analyze</button>
               <button id="previewBtn" class="ghost" disabled>Preview</button>
               <button id="extractBtn" class="ghost" disabled>Extract</button>
+              <button id="extractImagesBtn" class="ghost" disabled>Extract Images</button>
             </div>
           </div>
           <div class="command-group">
@@ -61,11 +62,11 @@
 
       <div class="workspace">
         <aside class="tool-rail" aria-label="Preview tools">
-          <button class="active" aria-label="Select tool">□</button>
+          <button id="selectTool" class="active" aria-label="Select tool">□</button>
           <button aria-label="Hand tool">✋</button>
           <button aria-label="Text box">T</button>
-          <button aria-label="Shapes">⬚</button>
-          <button aria-label="Image">🖼</button>
+          <button id="shapesTool" aria-label="Shapes">⬚</button>
+          <button id="imageTool" aria-label="Image">🖼</button>
           <button aria-label="More">⋯</button>
         </aside>
 
@@ -84,6 +85,7 @@
               <section class="panel preview-panel" id="previewPanel">
                 <h3>Live Preview</h3>
                 <canvas id="pageCanvas" class="preview" aria-label="PDF page preview"></canvas>
+                <div id="selectionLayer" class="selection-layer" aria-hidden="true"></div>
               </section>
             </div>
           </div>
@@ -156,6 +158,14 @@
               <div>
                 <h3>Detected entities</h3>
                 <div id="entityList" class="entity-chips"></div>
+              </div>
+            </section>
+
+            <section class="panel">
+              <h2>Extracted Images</h2>
+              <p class="hint">Export all embedded images into a simple gallery.</p>
+              <div id="imageGrid" class="image-grid">
+                <p class="hint">Run "Extract Images" to see any embedded artwork.</p>
               </div>
             </section>
           </div>

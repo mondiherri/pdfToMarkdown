@@ -17,10 +17,15 @@ import * as pdfjsLib from 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168
       const analyzeButton = document.getElementById('analyzeBtn');
       const previewButton = document.getElementById('previewBtn');
       const extractButton = document.getElementById('extractBtn');
+      const extractImagesButton = document.getElementById('extractImagesBtn');
+      const imageToolButton = document.getElementById('imageTool');
+      const shapesToolButton = document.getElementById('shapesTool');
       const markdownButton = document.getElementById('markdownBtn');
       const jsonButton = document.getElementById('jsonBtn');
       const csvButton = document.getElementById('csvBtn');
       const previewPanel = document.getElementById('previewPanel');
+      const selectionLayer = document.getElementById('selectionLayer');
+      const selectToolButton = document.getElementById('selectTool');
       const overrideSummaryEl = document.getElementById('overrideSummary');
       const tocThresholdInput = document.getElementById('tocThreshold');
       const indexMinimumInput = document.getElementById('indexMinimum');
@@ -30,6 +35,7 @@ import * as pdfjsLib from 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168
       const searchInput = document.getElementById('searchInput');
       const searchResultsEl = document.getElementById('searchResults');
       const entityListEl = document.getElementById('entityList');
+      const imageGridEl = document.getElementById('imageGrid');
       let currentRenderTask = null;
 
       let pdfDoc = null;
@@ -37,6 +43,25 @@ import * as pdfjsLib from 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168
       let currentPage = 1;
       let pdfData = null;
       let pdfFileName = 'pdf-analysis';
+      let extractedImages = [];
+      let docExtractionStruct = [];
+      let activeTool = 'select';
+      let showImageHighlights = false;
+      let showCategoryHighlights = false;
+      const selectionBox = document.createElement('div');
+      selectionBox.className = 'selection-box';
+      selectionBox.style.display = 'none';
+      selectionLayer?.appendChild(selectionBox);
+      const pageImageRects = new Map();
+      let selectionMenu = null;
+      let currentViewportState = {
+        baseWidth: 0,
+        baseHeight: 0,
+        scale: 1,
+        outputScale: 1,
+      };
+      let isDraggingSelection = false;
+      let dragStart = null;
       const headerOverridePages = new Set();
       const footerOverridePages = new Set();
       const columnPreviewSelections = new Map();
@@ -65,6 +90,7 @@ import * as pdfjsLib from 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168
       analyzeButton.addEventListener('click', () => runAnalysis());
       previewButton.addEventListener('click', focusPreviewPanel);
       extractButton.addEventListener('click', exportAnalysisReport);
+      extractImagesButton.addEventListener('click', handleExtractImages);
       markdownButton.addEventListener('click', exportMarkdownDocument);
       jsonButton.addEventListener('click', exportJsonAnalysis);
       csvButton.addEventListener('click', exportCsvSummary);
@@ -73,6 +99,24 @@ import * as pdfjsLib from 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168
       resetSettingsButton.addEventListener('click', resetHeuristicsToDefault);
       searchInput.addEventListener('input', handleSearchInput);
       syncHeuristicInputs();
+      if (selectToolButton) {
+        selectToolButton.addEventListener('click', () => setActiveTool('select'));
+      }
+      if (imageToolButton) {
+        imageToolButton.addEventListener('click', () => {
+          showImageHighlights = !showImageHighlights;
+          imageToolButton.classList.toggle('active', showImageHighlights);
+          renderImageHighlights(currentPage);
+        });
+      }
+      if (shapesToolButton) {
+        shapesToolButton.addEventListener('click', () => {
+          showCategoryHighlights = !showCategoryHighlights;
+          shapesToolButton.classList.toggle('active', showCategoryHighlights);
+          renderCategoryHighlights(currentPage);
+        });
+      }
+      setupSelectionHandlers();
 
       function setLoading(message = '') {
         loadingEl.textContent = message || 'Status: idle';
@@ -265,6 +309,492 @@ import * as pdfjsLib from 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168
           .join('');
       }
 
+      const EXTRACTION_CATEGORIES = ['Title', 'Paragraph', 'Header', 'Footer', 'Column', 'Descriptor'];
+      const CATEGORY_COLORS = {
+        Title: 'category-title',
+        Paragraph: 'category-paragraph',
+        Header: 'category-header',
+        Footer: 'category-footer',
+        Column: 'category-column',
+        Image: 'category-image',
+        Descriptor: 'category-descriptor',
+      };
+
+      function setActiveTool(tool) {
+        activeTool = tool;
+        if (selectToolButton) {
+          if (tool === 'select') {
+            selectToolButton.classList.add('active');
+          } else {
+            selectToolButton.classList.remove('active');
+          }
+        }
+      }
+
+      function setupSelectionHandlers() {
+        if (!canvas) return;
+        canvas.addEventListener('mousedown', (event) => {
+          if (activeTool !== 'select' || !pdfDoc) return;
+          const point = getCanvasPoint(event);
+          if (!point) return;
+          hideSelectionMenu();
+          isDraggingSelection = true;
+          dragStart = point;
+          updateSelectionBox({ x: point.x, y: point.y, width: 0, height: 0, displayX: point.displayX, displayY: point.displayY, displayWidth: 0, displayHeight: 0 });
+        });
+
+        canvas.addEventListener('mousemove', (event) => {
+          if (!isDraggingSelection || !dragStart) return;
+          const point = getCanvasPoint(event);
+          if (!point) return;
+          const rect = buildRectFromPoints(dragStart, point);
+          updateSelectionBox(rect);
+        });
+
+        canvas.addEventListener('mouseup', (event) => {
+          if (!isDraggingSelection || !dragStart) return;
+          const point = getCanvasPoint(event);
+          isDraggingSelection = false;
+          if (!point) {
+            hideSelectionMenu();
+            return;
+          }
+          const rect = buildRectFromPoints(dragStart, point);
+          dragStart = null;
+          if (rect.width < 5 || rect.height < 5) {
+            hideSelectionMenu();
+            selectionBox.style.display = 'none';
+            return;
+          }
+          openSelectionMenu(rect, event);
+        });
+
+        document.addEventListener('click', (event) => {
+          if (!selectionMenu) return;
+          if (event.target.closest('.selection-menu')) return;
+          hideSelectionMenu();
+        });
+      }
+
+      function getCanvasPoint(event) {
+        const rect = canvas.getBoundingClientRect();
+        const scaleX = canvas.width / rect.width;
+        const scaleY = canvas.height / rect.height;
+        const x = (event.clientX - rect.left) * scaleX;
+        const y = (event.clientY - rect.top) * scaleY;
+        if (Number.isFinite(x) && Number.isFinite(y)) {
+          return {
+            x,
+            y,
+            displayX: event.clientX - rect.left,
+            displayY: event.clientY - rect.top,
+            displayWidth: rect.width,
+            displayHeight: rect.height,
+          };
+        }
+        return null;
+      }
+
+      function buildRectFromPoints(a, b) {
+        const x = Math.min(a.x, b.x);
+        const y = Math.min(a.y, b.y);
+        const width = Math.abs(a.x - b.x);
+        const height = Math.abs(a.y - b.y);
+        const displayX = Math.min(a.displayX, b.displayX);
+        const displayY = Math.min(a.displayY, b.displayY);
+        const displayWidth = Math.abs(a.displayX - b.displayX);
+        const displayHeight = Math.abs(a.displayY - b.displayY);
+        return { x, y, width, height, displayX, displayY, displayWidth, displayHeight };
+      }
+
+      function updateSelectionBox(rect) {
+        if (!selectionLayer || !selectionBox) return;
+        selectionBox.style.display = 'block';
+        const canvasRect = canvas.getBoundingClientRect();
+        const layerRect = selectionLayer.getBoundingClientRect();
+        const left = (canvasRect.left - layerRect.left) + (rect.displayX || 0);
+        const top = (canvasRect.top - layerRect.top) + (rect.displayY || 0);
+        selectionBox.style.left = `${left}px`;
+        selectionBox.style.top = `${top}px`;
+        selectionBox.style.width = `${rect.displayWidth || 0}px`;
+        selectionBox.style.height = `${rect.displayHeight || 0}px`;
+      }
+
+      function hideSelectionMenu() {
+        if (selectionMenu?.parentNode) {
+          selectionMenu.parentNode.removeChild(selectionMenu);
+        }
+        selectionMenu = null;
+      }
+
+      function openSelectionMenu(rect, event) {
+        if (!previewPanel) return;
+        hideSelectionMenu();
+        selectionMenu = document.createElement('div');
+        selectionMenu.className = 'selection-menu';
+        selectionMenu.innerHTML = `
+          <p>Label selected area as:</p>
+          ${EXTRACTION_CATEGORIES.map((label) => `<button type="button" data-extract-label="${label}">${label}</button>`).join('')}
+        `;
+        selectionMenu.addEventListener('click', (clickEvent) => {
+          const button = clickEvent.target.closest('[data-extract-label]');
+          if (!button) return;
+          const label = button.dataset.extractLabel;
+          recordExtraction(label, rect);
+          hideSelectionMenu();
+        });
+        const previewRect = previewPanel.getBoundingClientRect();
+        const offsetLeft = (event.clientX - previewRect.left) + 8;
+        const offsetTop = (event.clientY - previewRect.top) + 8;
+        selectionMenu.style.left = `${offsetLeft}px`;
+        selectionMenu.style.top = `${offsetTop}px`;
+        selectionMenu.style.position = 'absolute';
+        previewPanel.appendChild(selectionMenu);
+      }
+
+      function recordExtraction(category, rect) {
+        if (!pdfDoc || !rect || !currentViewportState.baseWidth || !currentViewportState.baseHeight) return;
+        const scale = currentViewportState.scale || 1;
+        const outputScale = currentViewportState.outputScale || 1;
+        const baseWidth = currentViewportState.baseWidth || 1;
+        const baseHeight = currentViewportState.baseHeight || 1;
+        const pdfX = rect.x / (scale * outputScale);
+        const pdfYFromTop = rect.y / (scale * outputScale);
+        const pdfWidth = rect.width / (scale * outputScale);
+        const pdfHeight = rect.height / (scale * outputScale);
+        const pdfY = baseHeight - (pdfYFromTop + pdfHeight);
+        const normalizedRect = {
+          x: clampNumber(pdfX / baseWidth, 0, 1),
+          y: clampNumber(pdfY / baseHeight, 0, 1),
+          width: clampNumber(pdfWidth / baseWidth, 0, 1),
+          height: clampNumber(pdfHeight / baseHeight, 0, 1),
+        };
+        docExtractionStruct.push({
+          pageNumber: currentPage,
+          category,
+          pdfRect: {
+            x: pdfX,
+            y: pdfY,
+            width: pdfWidth,
+            height: pdfHeight,
+            pageWidth: baseWidth,
+            pageHeight: baseHeight,
+          },
+          normalizedRect,
+          canvasRect: rect,
+          recordedAt: new Date().toISOString(),
+        });
+        setLoading(`Saved ${category} region on page ${currentPage}.`);
+        renderCategoryHighlights(currentPage);
+      }
+      function deriveDrawImageRect(args = []) {
+        const [, x = 0, y = 0, w = 0, h = 0] = args;
+        const width = args.length >= 5 ? w : 0;
+        const height = args.length >= 5 ? h : 0;
+        return {
+          x: Number(x) || 0,
+          y: Number(y) || 0,
+          width: Number(width) || 0,
+          height: Number(height) || 0,
+        };
+      }
+
+      function buildTransformedQuad(transform, rect) {
+        const { x, y, width, height } = rect;
+        const points = [
+          { x, y },
+          { x: x + width, y },
+          { x: x + width, y: y + height },
+          { x, y: y + height },
+        ];
+        return points.map((point) => ({
+          x: transform.a * point.x + transform.c * point.y + transform.e,
+          y: transform.b * point.x + transform.d * point.y + transform.f,
+        }));
+      }
+
+      function quadToBounds(quad = []) {
+        const xs = quad.map((p) => p.x);
+        const ys = quad.map((p) => p.y);
+        const minX = Math.min(...xs);
+        const minY = Math.min(...ys);
+        const maxX = Math.max(...xs);
+        const maxY = Math.max(...ys);
+        return { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
+      }
+
+      function dedupeRects(rects = []) {
+        const seen = new Set();
+        const results = [];
+        rects.forEach((rect) => {
+          const key = [rect.x, rect.y, rect.width, rect.height].map((v) => Math.round(v * 1000)).join(':');
+          if (seen.has(key)) return;
+          seen.add(key);
+          results.push(rect);
+        });
+        return results;
+      }
+
+      function renderImageHighlights(pageNumber) {
+        if (!selectionLayer) return;
+        selectionLayer.querySelectorAll('.image-highlight').forEach((node) => node.remove());
+        if (!showImageHighlights) return;
+        const rects = pageImageRects.get(pageNumber) || [];
+        if (!rects.length) return;
+        const canvasRect = canvas.getBoundingClientRect();
+        const layerRect = selectionLayer.getBoundingClientRect();
+        const offsetLeft = canvasRect.left - layerRect.left;
+        const offsetTop = canvasRect.top - layerRect.top;
+        rects.forEach((rect) => {
+          const highlight = document.createElement('div');
+          highlight.className = 'image-highlight';
+          const left = (rect.x || 0) * canvasRect.width + offsetLeft;
+          const top = (rect.y || 0) * canvasRect.height + offsetTop;
+          const width = (rect.width || 0) * canvasRect.width;
+          const height = (rect.height || 0) * canvasRect.height;
+          highlight.style.left = `${left}px`;
+          highlight.style.top = `${top}px`;
+          highlight.style.width = `${width}px`;
+          highlight.style.height = `${height}px`;
+          selectionLayer.appendChild(highlight);
+        });
+      }
+
+      function normalizeRect(entry) {
+        if (!entry) return null;
+        if (entry.normalizedRect) return entry.normalizedRect;
+        const pdfRect = entry.pdfRect;
+        if (!pdfRect?.pageWidth || !pdfRect?.pageHeight) return null;
+        return {
+          x: clampNumber((pdfRect.x || 0) / pdfRect.pageWidth, 0, 1),
+          y: clampNumber((pdfRect.y || 0) / pdfRect.pageHeight, 0, 1),
+          width: clampNumber((pdfRect.width || 0) / pdfRect.pageWidth, 0, 1),
+          height: clampNumber((pdfRect.height || 0) / pdfRect.pageHeight, 0, 1),
+        };
+      }
+
+      function renderCategoryHighlights(pageNumber) {
+        if (!selectionLayer) return;
+        selectionLayer.querySelectorAll('.category-highlight').forEach((node) => node.remove());
+        if (!showCategoryHighlights) return;
+        const canvasRect = canvas.getBoundingClientRect();
+        const layerRect = selectionLayer.getBoundingClientRect();
+        const offsetLeft = canvasRect.left - layerRect.left;
+        const offsetTop = canvasRect.top - layerRect.top;
+        const entries = (docExtractionStruct || []).filter((entry) => entry.pageNumber === pageNumber);
+        const rects = [];
+        entries.forEach((entry) => {
+          const normalized = normalizeRect(entry);
+          if (!normalized) return;
+          rects.push({ category: entry.category || 'Descriptor', rect: normalized });
+        });
+        const imageRects = pageImageRects.get(pageNumber) || [];
+        imageRects.forEach((rect) => rects.push({ category: 'Image', rect }));
+        rects.forEach((item) => {
+          const colorClass = CATEGORY_COLORS[item.category] || 'category-paragraph';
+          const overlay = document.createElement('div');
+          overlay.className = `category-highlight ${colorClass}`;
+          const left = (item.rect.x || 0) * canvasRect.width + offsetLeft;
+          const top = (item.rect.y || 0) * canvasRect.height + offsetTop;
+          const width = (item.rect.width || 0) * canvasRect.width;
+          const height = (item.rect.height || 0) * canvasRect.height;
+          overlay.style.left = `${left}px`;
+          overlay.style.top = `${top}px`;
+          overlay.style.width = `${width}px`;
+          overlay.style.height = `${height}px`;
+          selectionLayer.appendChild(overlay);
+        });
+      }
+
+
+      function clearImageGrid() {
+        if (!imageGridEl) return;
+        imageGridEl.innerHTML = '<p class="hint">Run "Extract Images" to see any embedded artwork.</p>';
+      }
+
+      function renderImageGrid(images = []) {
+        if (!imageGridEl) return;
+        if (!images.length) {
+          imageGridEl.innerHTML = '<p class="hint">No images detected in this document.</p>';
+          return;
+        }
+        imageGridEl.innerHTML = images
+          .map(
+            (image, index) => `
+              <div class="image-card">
+                <img src="${image.dataUrl}" alt="Extracted image ${index + 1} from page ${image.pageNumber || '?'}" loading="lazy" />
+                <div class="image-meta">
+                  <span class="pill muted">Page ${image.pageNumber || '?'}</span>
+                  <span>${image.width || '?'} × ${image.height || '?'}</span>
+                </div>
+              </div>
+            `
+          )
+          .join('');
+      }
+
+      async function handleExtractImages() {
+        if (!pdfData) {
+          setLoading('Select a PDF to extract images.');
+          return;
+        }
+        if (extractImagesButton) extractImagesButton.disabled = true;
+        try {
+          if (!pdfDoc) {
+            setLoading('Loading PDF…');
+            pdfDoc = await pdfjsLib.getDocument({ data: pdfData }).promise;
+          }
+          setLoading('Extracting images from PDF…');
+          extractedImages = await collectImagesFromDocument(pdfDoc);
+          renderImageGrid(extractedImages);
+          const message = extractedImages.length
+            ? `Extracted ${extractedImages.length} image${extractedImages.length === 1 ? '' : 's'}.`
+            : 'No embedded images were detected.';
+          setLoading(message);
+        } catch (error) {
+          console.error('Failed to extract images', error);
+          setLoading('Unable to extract images from this PDF.');
+        } finally {
+          if (extractImagesButton) extractImagesButton.disabled = !pdfDoc;
+        }
+      }
+
+      async function collectImagesFromDocument(pdf) {
+        if (!pdf) return [];
+        const images = [];
+        for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
+          setLoading(`Extracting images from page ${pageNumber} of ${pdf.numPages}…`);
+          const page = await pdf.getPage(pageNumber);
+          const pageImages = await extractImagesFromPage(page);
+          images.push(...pageImages);
+        }
+        setLoading('');
+        return images;
+      }
+
+      async function extractImagesFromPage(page) {
+        if (!page) return [];
+        try {
+          const viewport = page.getViewport({ scale: 0.5 });
+          const width = Math.max(Math.ceil(viewport.width), 1);
+          const height = Math.max(Math.ceil(viewport.height), 1);
+          const { context } = createCanvasWithContext(width, height);
+          if (!context) return [];
+          await page.render({ canvasContext: context, viewport }).promise;
+          const operatorList = await page.getOperatorList();
+          const results = [];
+          const seen = new Set();
+          for (let i = 0; i < operatorList.fnArray.length; i += 1) {
+            const fnId = operatorList.fnArray[i];
+            if (!isImageOperation(fnId)) continue;
+            const args = operatorList.argsArray[i];
+            // eslint-disable-next-line no-await-in-loop
+            const image = await resolveImageFromArgs(args, page);
+            if (!image?.dataUrl) continue;
+            if (seen.has(image.dataUrl)) continue;
+            seen.add(image.dataUrl);
+            results.push({ ...image, pageNumber: page.pageNumber });
+          }
+          return results;
+        } catch (error) {
+          console.warn('Image extraction failed for a page', error);
+          return [];
+        }
+      }
+
+      async function resolveImageFromArgs(args = [], page) {
+        const [firstArg] = args || [];
+        if (firstArg?.data && firstArg?.width && firstArg?.height) {
+          return convertInlineImage(firstArg);
+        }
+        if (typeof firstArg === 'string') {
+          return readImageFromStore(page?.objs, firstArg);
+        }
+        return null;
+      }
+
+      async function convertInlineImage(imageData) {
+        const width = Math.max(Math.round(imageData.width || 0), 1);
+        const height = Math.max(Math.round(imageData.height || 0), 1);
+        if (!width || !height || !imageData.data) return null;
+        const { canvas, context } = createCanvasWithContext(width, height);
+        if (!context) return null;
+        const dataArray = imageData.data instanceof Uint8ClampedArray ? imageData.data : new Uint8ClampedArray(imageData.data);
+        const inline = new ImageData(dataArray, width, height);
+        context.putImageData(inline, 0, 0);
+        return { dataUrl: canvas.toDataURL('image/png'), width, height };
+      }
+
+      async function readImageFromStore(store, name) {
+        if (!store || !name) return null;
+        try {
+          const direct = store.get(name);
+          const converted = await convertImageLike(direct);
+          if (converted) return converted;
+        } catch (error) {
+          // Object may not be ready yet; fall back to async getter.
+        }
+        return new Promise((resolve) => {
+          try {
+            store.get(name, async (image) => {
+              resolve(await convertImageLike(image));
+            });
+          } catch (error) {
+            resolve(null);
+          }
+        });
+      }
+
+      async function convertImageLike(image) {
+        if (!image) return null;
+        const width = Math.max(Math.round(image.width || image.bitmapWidth || image._width || 0), 1);
+        const height = Math.max(Math.round(image.height || image.bitmapHeight || image._height || 0), 1);
+        if (!width || !height) return null;
+        const { canvas, context } = createCanvasWithContext(width, height);
+        if (!context) return null;
+        try {
+          if (image instanceof ImageData) {
+            context.putImageData(image, 0, 0);
+          } else if (image?.data) {
+            const data = image.data instanceof Uint8ClampedArray ? image.data : new Uint8ClampedArray(image.data);
+            const imageData = new ImageData(data, width, height);
+            context.putImageData(imageData, 0, 0);
+          } else if (typeof ImageBitmap !== 'undefined' && image instanceof ImageBitmap) {
+            context.drawImage(image, 0, 0, width, height);
+          } else if (typeof OffscreenCanvas !== 'undefined' && image instanceof OffscreenCanvas) {
+            context.drawImage(image, 0, 0, width, height);
+          } else if (image instanceof HTMLCanvasElement || image instanceof HTMLImageElement) {
+            context.drawImage(image, 0, 0, width, height);
+          } else {
+            return null;
+          }
+          return { dataUrl: canvas.toDataURL('image/png'), width, height };
+        } catch (error) {
+          console.warn('Could not convert image', error);
+          return null;
+        }
+      }
+
+      function createCanvasWithContext(width, height) {
+        const canvasEl = document.createElement('canvas');
+        canvasEl.width = Math.max(width, 1);
+        canvasEl.height = Math.max(height, 1);
+        const context = canvasEl.getContext('2d');
+        return { canvas: canvasEl, context };
+      }
+
+      function isImageOperation(fnId) {
+        const ops = pdfjsLib.OPS || {};
+        return (
+          fnId === ops.paintImageXObject ||
+          fnId === ops.paintImageXObjectRepeat ||
+          fnId === ops.paintInlineImageXObject ||
+          fnId === ops.paintInlineImageXObjectGroup ||
+          fnId === ops.paintImageMaskXObject ||
+          fnId === ops.paintJpegXObject
+        );
+      }
+
       function escapeRegExp(text = '') {
         return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
       }
@@ -322,6 +852,7 @@ import * as pdfjsLib from 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168
         analyzeButton.disabled = true;
         previewButton.disabled = true;
         extractButton.disabled = true;
+        if (extractImagesButton) extractImagesButton.disabled = true;
         markdownButton.disabled = true;
         jsonButton.disabled = true;
         csvButton.disabled = true;
@@ -332,6 +863,18 @@ import * as pdfjsLib from 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168
         searchInput.disabled = true;
         searchResultsEl.innerHTML = '<p>Load a document to enable search.</p>';
         entityListEl.textContent = '';
+        extractedImages = [];
+        docExtractionStruct = [];
+        pageImageRects.clear();
+        showImageHighlights = false;
+        showCategoryHighlights = false;
+        imageToolButton?.classList.remove('active');
+        shapesToolButton?.classList.remove('active');
+        clearImageGrid();
+        selectionBox.style.display = 'none';
+        hideSelectionMenu();
+        renderCategoryHighlights(currentPage);
+        renderImageHighlights(currentPage);
         setLoading('');
       }
 
@@ -344,6 +887,7 @@ import * as pdfjsLib from 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168
         analyzeButton.disabled = true;
         previewButton.disabled = true;
         extractButton.disabled = true;
+        if (extractImagesButton) extractImagesButton.disabled = true;
         markdownButton.disabled = true;
         headerOverridePages.clear();
         footerOverridePages.clear();
@@ -351,6 +895,14 @@ import * as pdfjsLib from 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168
         textAreaOverlayPages.clear();
         headerFooterOverlayPages.clear();
         invisibleTextOverlayPages.clear();
+        docExtractionStruct = [];
+        pageImageRects.clear();
+        showImageHighlights = false;
+        showCategoryHighlights = false;
+        imageToolButton?.classList.remove('active');
+        shapesToolButton?.classList.remove('active');
+        selectionBox.style.display = 'none';
+        hideSelectionMenu();
 
         setLoading('Loading PDF…');
         pdfDoc = await pdfjsLib.getDocument({ data: pdfData }).promise;
@@ -367,6 +919,9 @@ import * as pdfjsLib from 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168
         renderPageDetails(1);
         previewButton.disabled = false;
         extractButton.disabled = false;
+        extractedImages = [];
+        clearImageGrid();
+        if (extractImagesButton) extractImagesButton.disabled = false;
         markdownButton.disabled = false;
         jsonButton.disabled = false;
         csvButton.disabled = false;
@@ -469,10 +1024,14 @@ import * as pdfjsLib from 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168
         currentPage = pageNumber;
         pageSelectEl.value = String(pageNumber);
         pageIndicator.textContent = `Page ${pageNumber} of ${pdfDoc.numPages}`;
+        selectionBox.style.display = 'none';
+        hideSelectionMenu();
         renderPageDetails(pageNumber);
         await renderPage(pageNumber);
         prevButton.disabled = pageNumber === 1;
         nextButton.disabled = pageNumber === pdfDoc.numPages;
+        renderCategoryHighlights(pageNumber);
+        renderImageHighlights(pageNumber);
       }
 
       function focusPreviewPanel() {
@@ -488,6 +1047,12 @@ import * as pdfjsLib from 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168
         const scale = desiredHeight / (baseViewport.height || 1);
         const viewport = page.getViewport({ scale });
         const outputScale = window.devicePixelRatio || 1;
+        currentViewportState = {
+          baseWidth: baseViewport.width || 1,
+          baseHeight: baseViewport.height || 1,
+          scale,
+          outputScale,
+        };
 
         if (currentRenderTask) {
           try {
@@ -513,21 +1078,50 @@ import * as pdfjsLib from 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168
           transform,
         };
 
+        const detectedImageRects = [];
+        const originalDrawImage = ctx.drawImage.bind(ctx);
+        ctx.drawImage = function instrumentedDrawImage(image, ...args) {
+          try {
+            const rect = deriveDrawImageRect(args);
+            const transformMatrix = ctx.getTransform();
+            const quad = buildTransformedQuad(transformMatrix, rect);
+            const bounds = quadToBounds(quad);
+            if (bounds.width > 0 && bounds.height > 0) {
+              const normalized = {
+                x: clampNumber(bounds.x / canvas.width, 0, 1),
+                y: clampNumber(bounds.y / canvas.height, 0, 1),
+                width: clampNumber(bounds.width / canvas.width, 0, 1),
+                height: clampNumber(bounds.height / canvas.height, 0, 1),
+              };
+              detectedImageRects.push(normalized);
+            }
+          } catch (error) {
+            console.warn('Failed to record image bounds', error);
+          }
+          return originalDrawImage(image, ...args);
+        };
+
         currentRenderTask = page.render(renderContext);
         try {
           await currentRenderTask.promise;
         } finally {
+          ctx.drawImage = originalDrawImage;
           currentRenderTask = null;
         }
+        pageImageRects.set(pageNumber, dedupeRects(detectedImageRects));
         drawColumnOverlay(pageNumber);
         drawTextAreasOverlay(pageNumber);
         drawHeaderFooterOverlay(pageNumber);
         drawInvisibleOverlay(pageNumber);
+        renderImageHighlights(pageNumber);
+        renderCategoryHighlights(pageNumber);
       }
 
       function handleResize() {
         if (!pdfDoc) return;
         renderPage(currentPage).catch((err) => console.error('Resize render failed', err));
+        renderImageHighlights(currentPage);
+        renderCategoryHighlights(currentPage);
       }
 
       function renderPageDetails(pageNumber) {
