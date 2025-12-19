@@ -732,6 +732,64 @@ footer a {
   box-shadow: none;
 }
 
+.selection-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.selection-box {
+  position: absolute;
+  border: 2px dashed color-mix(in srgb, var(--accent), #000 10%);
+  background: color-mix(in srgb, var(--accent), transparent 80%);
+  border-radius: 6px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.12);
+}
+
+.selection-menu {
+  position: absolute;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 14px 30px rgba(0, 0, 0, 0.16);
+  padding: 0.6rem;
+  display: grid;
+  gap: 0.4rem;
+  min-width: 200px;
+  z-index: 2;
+}
+
+.selection-menu p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.selection-menu button {
+  width: 100%;
+  text-align: left;
+  background: #f8fafc;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.4rem 0.55rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.selection-menu button:hover {
+  background: color-mix(in srgb, var(--accent), transparent 85%);
+  border-color: color-mix(in srgb, var(--accent), transparent 70%);
+}
+
+.image-highlight {
+  position: absolute;
+  border: 2px solid rgba(255, 165, 0, 0.9);
+  background: rgba(255, 165, 0, 0.14);
+  border-radius: 6px;
+  box-shadow: 0 10px 24px rgba(255, 165, 0, 0.35);
+  pointer-events: none;
+}
+
 @media (max-width: 1040px) {
   .workspace {
     grid-template-columns: 70px 1fr;

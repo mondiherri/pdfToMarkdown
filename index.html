@@ -62,11 +62,11 @@
 
       <div class="workspace">
         <aside class="tool-rail" aria-label="Preview tools">
-          <button class="active" aria-label="Select tool">□</button>
+          <button id="selectTool" class="active" aria-label="Select tool">□</button>
           <button aria-label="Hand tool">✋</button>
           <button aria-label="Text box">T</button>
           <button aria-label="Shapes">⬚</button>
-          <button aria-label="Image">🖼</button>
+          <button id="imageTool" aria-label="Image">🖼</button>
           <button aria-label="More">⋯</button>
         </aside>
 
@@ -85,6 +85,7 @@
               <section class="panel preview-panel" id="previewPanel">
                 <h3>Live Preview</h3>
                 <canvas id="pageCanvas" class="preview" aria-label="PDF page preview"></canvas>
+                <div id="selectionLayer" class="selection-layer" aria-hidden="true"></div>
               </section>
             </div>
           </div>
