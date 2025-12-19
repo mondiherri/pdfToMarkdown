@@ -75,7 +75,7 @@ import * as pdfjsLib from 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168
       syncHeuristicInputs();
 
       function setLoading(message = '') {
-        loadingEl.textContent = message;
+        loadingEl.textContent = message || 'Status: idle';
       }
 
       function storageAvailable(){
@@ -317,7 +317,7 @@ import * as pdfjsLib from 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168
         pageSelectEl.removeAttribute('step');
         prevButton.disabled = true;
         nextButton.disabled = true;
-        pageIndicator.textContent = '';
+        pageIndicator.textContent = 'Page —';
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         analyzeButton.disabled = true;
         previewButton.disabled = true;
