@@ -18,6 +18,7 @@ import * as pdfjsLib from 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168
       const previewButton = document.getElementById('previewBtn');
       const extractButton = document.getElementById('extractBtn');
       const extractImagesButton = document.getElementById('extractImagesBtn');
+      const imageToolButton = document.getElementById('imageTool');
       const markdownButton = document.getElementById('markdownBtn');
       const jsonButton = document.getElementById('jsonBtn');
       const csvButton = document.getElementById('csvBtn');
@@ -44,10 +45,12 @@ import * as pdfjsLib from 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168
       let extractedImages = [];
       let docExtractionStruct = [];
       let activeTool = 'select';
+      let showImageHighlights = false;
       const selectionBox = document.createElement('div');
       selectionBox.className = 'selection-box';
       selectionBox.style.display = 'none';
       selectionLayer?.appendChild(selectionBox);
+      const pageImageRects = new Map();
       let selectionMenu = null;
       let currentViewportState = {
         baseWidth: 0,
@@ -96,6 +99,13 @@ import * as pdfjsLib from 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168
       syncHeuristicInputs();
       if (selectToolButton) {
         selectToolButton.addEventListener('click', () => setActiveTool('select'));
+      }
+      if (imageToolButton) {
+        imageToolButton.addEventListener('click', () => {
+          showImageHighlights = !showImageHighlights;
+          imageToolButton.classList.toggle('active', showImageHighlights);
+          renderImageHighlights(currentPage);
+        });
       }
       setupSelectionHandlers();
 
@@ -459,6 +469,119 @@ import * as pdfjsLib from 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168
         setLoading(`Saved ${category} region on page ${currentPage}.`);
       }
 
+      function captureImageRectsDuringRender(pageNumber) {
+        const detected = [];
+        const originalDrawImage = ctx.drawImage.bind(ctx);
+        ctx.drawImage = function interceptedDrawImage(image, ...args) {
+          try {
+            const rect = deriveDrawImageRect(args);
+            const transform = ctx.getTransform();
+            const quad = buildTransformedQuad(transform, rect);
+            const bounds = quadToBounds(quad);
+            if (bounds.width > 0 && bounds.height > 0) {
+              const normalized = {
+                x: clampNumber(bounds.x / canvas.width, 0, 1),
+                y: clampNumber(bounds.y / canvas.height, 0, 1),
+                width: clampNumber(bounds.width / canvas.width, 0, 1),
+                height: clampNumber(bounds.height / canvas.height, 0, 1),
+              };
+              detected.push(normalized);
+            }
+          } catch (error) {
+            console.warn('Failed to record image bounds', error);
+          }
+          return originalDrawImage(image, ...args);
+        };
+        currentRenderTask = page.render({ canvasContext: ctx, viewport, transform });
+        return (async () => {
+          try {
+            await currentRenderTask.promise;
+          } finally {
+            ctx.drawImage = originalDrawImage;
+            currentRenderTask = null;
+          }
+          const unique = dedupeRects(detected);
+          return unique.map((rect) => ({
+            ...rect,
+            pageNumber,
+          }));
+        })();
+      }
+
+      function deriveDrawImageRect(args = []) {
+        const [, x = 0, y = 0, w = 0, h = 0] = args;
+        const width = args.length >= 5 ? w : 0;
+        const height = args.length >= 5 ? h : 0;
+        return {
+          x: Number(x) || 0,
+          y: Number(y) || 0,
+          width: Number(width) || 0,
+          height: Number(height) || 0,
+        };
+      }
+
+      function buildTransformedQuad(transform, rect) {
+        const { x, y, width, height } = rect;
+        const points = [
+          { x, y },
+          { x: x + width, y },
+          { x: x + width, y: y + height },
+          { x, y: y + height },
+        ];
+        return points.map((point) => ({
+          x: transform.a * point.x + transform.c * point.y + transform.e,
+          y: transform.b * point.x + transform.d * point.y + transform.f,
+        }));
+      }
+
+      function quadToBounds(quad = []) {
+        const xs = quad.map((p) => p.x);
+        const ys = quad.map((p) => p.y);
+        const minX = Math.min(...xs);
+        const minY = Math.min(...ys);
+        const maxX = Math.max(...xs);
+        const maxY = Math.max(...ys);
+        return { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
+      }
+
+      function dedupeRects(rects = []) {
+        const seen = new Set();
+        const results = [];
+        rects.forEach((rect) => {
+          const key = [rect.x, rect.y, rect.width, rect.height].map((v) => Math.round(v * 1000)).join(':');
+          if (seen.has(key)) return;
+          seen.add(key);
+          results.push(rect);
+        });
+        return results;
+      }
+
+      function renderImageHighlights(pageNumber) {
+        if (!selectionLayer) return;
+        selectionLayer.querySelectorAll('.image-highlight').forEach((node) => node.remove());
+        if (!showImageHighlights) return;
+        const rects = pageImageRects.get(pageNumber) || [];
+        if (!rects.length) return;
+        const canvasRect = canvas.getBoundingClientRect();
+        const layerRect = selectionLayer.getBoundingClientRect();
+        const offsetLeft = canvasRect.left - layerRect.left;
+        const offsetTop = canvasRect.top - layerRect.top;
+        rects.forEach((rect) => {
+          const highlight = document.createElement('div');
+          highlight.className = 'image-highlight';
+          const left = (rect.x || 0) * canvasRect.width + offsetLeft;
+          const top = (rect.y || 0) * canvasRect.height + offsetTop;
+          const width = (rect.width || 0) * canvasRect.width;
+          const height = (rect.height || 0) * canvasRect.height;
+          highlight.style.left = `${left}px`;
+          highlight.style.top = `${top}px`;
+          highlight.style.width = `${width}px`;
+          highlight.style.height = `${height}px`;
+          selectionLayer.appendChild(highlight);
+        });
+      }
+
+
       function clearImageGrid() {
         if (!imageGridEl) return;
         imageGridEl.innerHTML = '<p class="hint">Run "Extract Images" to see any embedded artwork.</p>';
@@ -717,6 +840,7 @@ import * as pdfjsLib from 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168
         entityListEl.textContent = '';
         extractedImages = [];
         docExtractionStruct = [];
+        pageImageRects.clear();
         clearImageGrid();
         selectionBox.style.display = 'none';
         hideSelectionMenu();
@@ -741,6 +865,7 @@ import * as pdfjsLib from 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168
         headerFooterOverlayPages.clear();
         invisibleTextOverlayPages.clear();
         docExtractionStruct = [];
+        pageImageRects.clear();
         selectionBox.style.display = 'none';
         hideSelectionMenu();
 
@@ -920,17 +1045,23 @@ import * as pdfjsLib from 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168
         try {
           await currentRenderTask.promise;
         } finally {
-          currentRenderTask = null;
+        currentRenderTask = null;
+      }
+        const detectedImageRects = captureImageRectsDuringRender(pageNumber);
+        if (detectedImageRects) {
+          pageImageRects.set(pageNumber, detectedImageRects);
         }
         drawColumnOverlay(pageNumber);
         drawTextAreasOverlay(pageNumber);
         drawHeaderFooterOverlay(pageNumber);
         drawInvisibleOverlay(pageNumber);
+        renderImageHighlights(pageNumber);
       }
 
       function handleResize() {
         if (!pdfDoc) return;
         renderPage(currentPage).catch((err) => console.error('Resize render failed', err));
+        renderImageHighlights(currentPage);
       }
 
       function renderPageDetails(pageNumber) {
