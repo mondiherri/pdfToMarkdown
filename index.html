@@ -46,6 +46,7 @@
               <button id="analyzeBtn" class="primary" disabled>Analyze</button>
               <button id="previewBtn" class="ghost" disabled>Preview</button>
               <button id="extractBtn" class="ghost" disabled>Extract</button>
+              <button id="extractImagesBtn" class="ghost" disabled>Extract Images</button>
             </div>
           </div>
           <div class="command-group">
@@ -156,6 +157,14 @@
               <div>
                 <h3>Detected entities</h3>
                 <div id="entityList" class="entity-chips"></div>
+              </div>
+            </section>
+
+            <section class="panel">
+              <h2>Extracted Images</h2>
+              <p class="hint">Export all embedded images into a simple gallery.</p>
+              <div id="imageGrid" class="image-grid">
+                <p class="hint">Run "Extract Images" to see any embedded artwork.</p>
               </div>
             </section>
           </div>
