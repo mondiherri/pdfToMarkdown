@@ -17,6 +17,7 @@ import * as pdfjsLib from 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168
       const analyzeButton = document.getElementById('analyzeBtn');
       const previewButton = document.getElementById('previewBtn');
       const extractButton = document.getElementById('extractBtn');
+      const extractImagesButton = document.getElementById('extractImagesBtn');
       const markdownButton = document.getElementById('markdownBtn');
       const jsonButton = document.getElementById('jsonBtn');
       const csvButton = document.getElementById('csvBtn');
@@ -30,6 +31,7 @@ import * as pdfjsLib from 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168
       const searchInput = document.getElementById('searchInput');
       const searchResultsEl = document.getElementById('searchResults');
       const entityListEl = document.getElementById('entityList');
+      const imageGridEl = document.getElementById('imageGrid');
       let currentRenderTask = null;
 
       let pdfDoc = null;
@@ -37,6 +39,7 @@ import * as pdfjsLib from 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168
       let currentPage = 1;
       let pdfData = null;
       let pdfFileName = 'pdf-analysis';
+      let extractedImages = [];
       const headerOverridePages = new Set();
       const footerOverridePages = new Set();
       const columnPreviewSelections = new Map();
@@ -65,6 +68,7 @@ import * as pdfjsLib from 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168
       analyzeButton.addEventListener('click', () => runAnalysis());
       previewButton.addEventListener('click', focusPreviewPanel);
       extractButton.addEventListener('click', exportAnalysisReport);
+      extractImagesButton.addEventListener('click', handleExtractImages);
       markdownButton.addEventListener('click', exportMarkdownDocument);
       jsonButton.addEventListener('click', exportJsonAnalysis);
       csvButton.addEventListener('click', exportCsvSummary);
@@ -265,6 +269,194 @@ import * as pdfjsLib from 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168
           .join('');
       }
 
+      function clearImageGrid() {
+        if (!imageGridEl) return;
+        imageGridEl.innerHTML = '<p class="hint">Run "Extract Images" to see any embedded artwork.</p>';
+      }
+
+      function renderImageGrid(images = []) {
+        if (!imageGridEl) return;
+        if (!images.length) {
+          imageGridEl.innerHTML = '<p class="hint">No images detected in this document.</p>';
+          return;
+        }
+        imageGridEl.innerHTML = images
+          .map(
+            (image, index) => `
+              <div class="image-card">
+                <img src="${image.dataUrl}" alt="Extracted image ${index + 1} from page ${image.pageNumber || '?'}" loading="lazy" />
+                <div class="image-meta">
+                  <span class="pill muted">Page ${image.pageNumber || '?'}</span>
+                  <span>${image.width || '?'} × ${image.height || '?'}</span>
+                </div>
+              </div>
+            `
+          )
+          .join('');
+      }
+
+      async function handleExtractImages() {
+        if (!pdfData) {
+          setLoading('Select a PDF to extract images.');
+          return;
+        }
+        if (extractImagesButton) extractImagesButton.disabled = true;
+        try {
+          if (!pdfDoc) {
+            setLoading('Loading PDF…');
+            pdfDoc = await pdfjsLib.getDocument({ data: pdfData }).promise;
+          }
+          setLoading('Extracting images from PDF…');
+          extractedImages = await collectImagesFromDocument(pdfDoc);
+          renderImageGrid(extractedImages);
+          const message = extractedImages.length
+            ? `Extracted ${extractedImages.length} image${extractedImages.length === 1 ? '' : 's'}.`
+            : 'No embedded images were detected.';
+          setLoading(message);
+        } catch (error) {
+          console.error('Failed to extract images', error);
+          setLoading('Unable to extract images from this PDF.');
+        } finally {
+          if (extractImagesButton) extractImagesButton.disabled = !pdfDoc;
+        }
+      }
+
+      async function collectImagesFromDocument(pdf) {
+        if (!pdf) return [];
+        const images = [];
+        for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
+          setLoading(`Extracting images from page ${pageNumber} of ${pdf.numPages}…`);
+          const page = await pdf.getPage(pageNumber);
+          const pageImages = await extractImagesFromPage(page);
+          images.push(...pageImages);
+        }
+        setLoading('');
+        return images;
+      }
+
+      async function extractImagesFromPage(page) {
+        if (!page) return [];
+        try {
+          const viewport = page.getViewport({ scale: 0.5 });
+          const width = Math.max(Math.ceil(viewport.width), 1);
+          const height = Math.max(Math.ceil(viewport.height), 1);
+          const { context } = createCanvasWithContext(width, height);
+          if (!context) return [];
+          await page.render({ canvasContext: context, viewport }).promise;
+          const operatorList = await page.getOperatorList();
+          const results = [];
+          const seen = new Set();
+          for (let i = 0; i < operatorList.fnArray.length; i += 1) {
+            const fnId = operatorList.fnArray[i];
+            if (!isImageOperation(fnId)) continue;
+            const args = operatorList.argsArray[i];
+            // eslint-disable-next-line no-await-in-loop
+            const image = await resolveImageFromArgs(args, page);
+            if (!image?.dataUrl) continue;
+            if (seen.has(image.dataUrl)) continue;
+            seen.add(image.dataUrl);
+            results.push({ ...image, pageNumber: page.pageNumber });
+          }
+          return results;
+        } catch (error) {
+          console.warn('Image extraction failed for a page', error);
+          return [];
+        }
+      }
+
+      async function resolveImageFromArgs(args = [], page) {
+        const [firstArg] = args || [];
+        if (firstArg?.data && firstArg?.width && firstArg?.height) {
+          return convertInlineImage(firstArg);
+        }
+        if (typeof firstArg === 'string') {
+          return readImageFromStore(page?.objs, firstArg);
+        }
+        return null;
+      }
+
+      async function convertInlineImage(imageData) {
+        const width = Math.max(Math.round(imageData.width || 0), 1);
+        const height = Math.max(Math.round(imageData.height || 0), 1);
+        if (!width || !height || !imageData.data) return null;
+        const { canvas, context } = createCanvasWithContext(width, height);
+        if (!context) return null;
+        const dataArray = imageData.data instanceof Uint8ClampedArray ? imageData.data : new Uint8ClampedArray(imageData.data);
+        const inline = new ImageData(dataArray, width, height);
+        context.putImageData(inline, 0, 0);
+        return { dataUrl: canvas.toDataURL('image/png'), width, height };
+      }
+
+      async function readImageFromStore(store, name) {
+        if (!store || !name) return null;
+        try {
+          const direct = store.get(name);
+          const converted = await convertImageLike(direct);
+          if (converted) return converted;
+        } catch (error) {
+          // Object may not be ready yet; fall back to async getter.
+        }
+        return new Promise((resolve) => {
+          try {
+            store.get(name, async (image) => {
+              resolve(await convertImageLike(image));
+            });
+          } catch (error) {
+            resolve(null);
+          }
+        });
+      }
+
+      async function convertImageLike(image) {
+        if (!image) return null;
+        const width = Math.max(Math.round(image.width || image.bitmapWidth || image._width || 0), 1);
+        const height = Math.max(Math.round(image.height || image.bitmapHeight || image._height || 0), 1);
+        if (!width || !height) return null;
+        const { canvas, context } = createCanvasWithContext(width, height);
+        if (!context) return null;
+        try {
+          if (image instanceof ImageData) {
+            context.putImageData(image, 0, 0);
+          } else if (image?.data) {
+            const data = image.data instanceof Uint8ClampedArray ? image.data : new Uint8ClampedArray(image.data);
+            const imageData = new ImageData(data, width, height);
+            context.putImageData(imageData, 0, 0);
+          } else if (typeof ImageBitmap !== 'undefined' && image instanceof ImageBitmap) {
+            context.drawImage(image, 0, 0, width, height);
+          } else if (typeof OffscreenCanvas !== 'undefined' && image instanceof OffscreenCanvas) {
+            context.drawImage(image, 0, 0, width, height);
+          } else if (image instanceof HTMLCanvasElement || image instanceof HTMLImageElement) {
+            context.drawImage(image, 0, 0, width, height);
+          } else {
+            return null;
+          }
+          return { dataUrl: canvas.toDataURL('image/png'), width, height };
+        } catch (error) {
+          console.warn('Could not convert image', error);
+          return null;
+        }
+      }
+
+      function createCanvasWithContext(width, height) {
+        const canvasEl = document.createElement('canvas');
+        canvasEl.width = Math.max(width, 1);
+        canvasEl.height = Math.max(height, 1);
+        const context = canvasEl.getContext('2d');
+        return { canvas: canvasEl, context };
+      }
+
+      function isImageOperation(fnId) {
+        const ops = pdfjsLib.OPS || {};
+        return (
+          fnId === ops.paintImageXObject ||
+          fnId === ops.paintImageXObjectRepeat ||
+          fnId === ops.paintInlineImageXObject ||
+          fnId === ops.paintInlineImageXObjectGroup ||
+          fnId === ops.paintImageMaskXObject ||
+          fnId === ops.paintJpegXObject
+        );
+      }
+
       function escapeRegExp(text = '') {
         return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
       }
@@ -322,6 +514,7 @@ import * as pdfjsLib from 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168
         analyzeButton.disabled = true;
         previewButton.disabled = true;
         extractButton.disabled = true;
+        if (extractImagesButton) extractImagesButton.disabled = true;
         markdownButton.disabled = true;
         jsonButton.disabled = true;
         csvButton.disabled = true;
@@ -332,6 +525,8 @@ import * as pdfjsLib from 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168
         searchInput.disabled = true;
         searchResultsEl.innerHTML = '<p>Load a document to enable search.</p>';
         entityListEl.textContent = '';
+        extractedImages = [];
+        clearImageGrid();
         setLoading('');
       }
 
@@ -344,6 +539,7 @@ import * as pdfjsLib from 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168
         analyzeButton.disabled = true;
         previewButton.disabled = true;
         extractButton.disabled = true;
+        if (extractImagesButton) extractImagesButton.disabled = true;
         markdownButton.disabled = true;
         headerOverridePages.clear();
         footerOverridePages.clear();
@@ -367,6 +563,9 @@ import * as pdfjsLib from 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168
         renderPageDetails(1);
         previewButton.disabled = false;
         extractButton.disabled = false;
+        extractedImages = [];
+        clearImageGrid();
+        if (extractImagesButton) extractImagesButton.disabled = false;
         markdownButton.disabled = false;
         jsonButton.disabled = false;
         csvButton.disabled = false;

@@ -692,6 +692,46 @@ footer a {
   font-weight: 600;
 }
 
+.image-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 0.75rem;
+  margin-top: 0.65rem;
+}
+
+.image-card {
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 0.5rem;
+  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.08);
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.image-card img {
+  width: 100%;
+  height: 140px;
+  object-fit: contain;
+  background: #f8fafc;
+  border-radius: 8px;
+  border: 1px dashed var(--border);
+}
+
+.image-meta {
+  font-size: 0.85rem;
+  color: var(--muted);
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.image-meta .pill {
+  padding: 0.2rem 0.6rem;
+  box-shadow: none;
+}
+
 @media (max-width: 1040px) {
   .workspace {
     grid-template-columns: 70px 1fr;
