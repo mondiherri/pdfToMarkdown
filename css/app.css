@@ -692,6 +692,95 @@ footer a {
   font-weight: 600;
 }
 
+.image-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 0.75rem;
+  margin-top: 0.65rem;
+}
+
+.image-card {
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 0.5rem;
+  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.08);
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.image-card img {
+  width: 100%;
+  height: 140px;
+  object-fit: contain;
+  background: #f8fafc;
+  border-radius: 8px;
+  border: 1px dashed var(--border);
+}
+
+.image-meta {
+  font-size: 0.85rem;
+  color: var(--muted);
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.image-meta .pill {
+  padding: 0.2rem 0.6rem;
+  box-shadow: none;
+}
+
+.selection-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.selection-box {
+  position: absolute;
+  border: 2px dashed color-mix(in srgb, var(--accent), #000 10%);
+  background: color-mix(in srgb, var(--accent), transparent 80%);
+  border-radius: 6px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.12);
+}
+
+.selection-menu {
+  position: absolute;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 14px 30px rgba(0, 0, 0, 0.16);
+  padding: 0.6rem;
+  display: grid;
+  gap: 0.4rem;
+  min-width: 200px;
+  z-index: 2;
+}
+
+.selection-menu p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.selection-menu button {
+  width: 100%;
+  text-align: left;
+  background: #f8fafc;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.4rem 0.55rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.selection-menu button:hover {
+  background: color-mix(in srgb, var(--accent), transparent 85%);
+  border-color: color-mix(in srgb, var(--accent), transparent 70%);
+}
+
 @media (max-width: 1040px) {
   .workspace {
     grid-template-columns: 70px 1fr;
